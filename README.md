@@ -144,7 +144,7 @@ Connect GitHub in the wizard to create a project from this repo and run the firs
 
 ### Cloudflare Pages
 
-`npm run build` → bind KV `BLOCKLIST` and D1 `DB` (see `wrangler.toml`).
+After `npm run build`, create KV + D1 in Cloudflare, fill `wrangler.toml`, or add **Bindings** `BLOCKLIST` + `DB` in the Pages project. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
 
 ### Node (self-hosted)
 

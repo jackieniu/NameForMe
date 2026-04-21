@@ -40,6 +40,9 @@ yarn-error.log*
 .env.*.local
 !.env.example
 
+# Cloudflare：本机真实 KV / D1 id（勿提交公开仓库）
+wrangler.local.toml
+
 # vercel
 .vercel
 

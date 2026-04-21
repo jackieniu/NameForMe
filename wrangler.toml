@@ -1,10 +1,16 @@
-# Cloudflare Pages / Workers binding 配置。
-# 生产上线时本地先执行：
-#   wrangler kv:namespace create BLOCKLIST
-#   wrangler d1 create nameforme_rate
-#   wrangler d1 migrations apply nameforme_rate --remote
-# 再把下方 id 填成真实值；Pages 项目在 dashboard > Settings > Functions > Bindings 里
-# 引用同名 KV namespace (BLOCKLIST) 与 D1 database (DB)。
+# Cloudflare：KV + D1 绑定（API 限流持久化，见 docs/cloudflare-deploy.md）
+#
+# 本文件可安全提交 GitHub：此处仅为占位 id，不含 API Token。
+# 真实 KV / D1 id 若不想写入仓库：复制本文件为 wrangler.local.toml（已在 .gitignore），
+# 填入 id 后使用 npx wrangler ... --config wrangler.local.toml。
+#
+# 创建资源（需先 npm install；登录：npm run cf:login 或 npx wrangler login）：
+#   npx wrangler kv namespace create BLOCKLIST
+#   npx wrangler d1 create nameforme_rate
+#   npx wrangler d1 migrations apply nameforme_rate --remote
+#
+# Pages 用 Git 连接部署时，也可仅在 Dashboard → Settings → Functions → Bindings
+# 绑定 BLOCKLIST (KV)、DB (D1)，仓库内继续保留占位即可。
 
 name = "nameforme"
 compatibility_date = "2025-02-01"
@@ -12,10 +18,10 @@ compatibility_flags = ["nodejs_compat"]
 
 [[kv_namespaces]]
 binding = "BLOCKLIST"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "f50465e4d576440fa8afcf763cf96685"
 
 [[d1_databases]]
-binding = "DB"
+binding = "nameforme_rate"
 database_name = "nameforme_rate"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "89073b4b-180a-482c-b55b-a7553468803f"
 migrations_dir = "migrations"
