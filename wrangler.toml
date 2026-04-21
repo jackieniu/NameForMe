@@ -21,7 +21,8 @@ binding = "BLOCKLIST"
 id = "f50465e4d576440fa8afcf763cf96685"
 
 [[d1_databases]]
-binding = "nameforme_rate"
+# 运行时变量名须为 `DB`，与 `src/lib/rate-storage/cloudflare.ts` 一致
+binding = "DB"
 database_name = "nameforme_rate"
 database_id = "89073b4b-180a-482c-b55b-a7553468803f"
 migrations_dir = "migrations"

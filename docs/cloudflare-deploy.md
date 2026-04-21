@@ -21,6 +21,23 @@
 
 ---
 
+## Pages 控制台：构建设置（必看）
+
+| 项 | 建议 |
+| -- | -- |
+| **Root directory** | 若仓库根不是 Next 应用，填 **`code`**（与 `package.json` 同目录）；否则留空或 `.`。 |
+| **Build command** | `npm run build`（或先 `npm ci` 已由平台执行时只写 `npm run build`）。 |
+| **Deploy command** | **留空**。Pages 会在 `npm run build` 成功后**自动**发布构建产物。 |
+
+**不要**把 **Deploy command** 写成 `npx wrangler deploy`：
+
+- `wrangler deploy` 用于发布**独立 Cloudflare Worker**，要求 `wrangler.toml` 里配置 **`main = "…"`**（脚本入口）或 **`[assets]`**（静态目录），否则会报错：`Missing entry-point to Worker script or to assets directory`。
+- 本仓库的 `wrangler.toml` **只有** KV / D1 绑定，**没有** Worker 入口；绑定在 **Pages → Settings → Functions → Bindings** 与本地 `wrangler dev` 使用即可。
+
+若要从本机手动上传 Pages（不走 Git），用 **`npx wrangler pages deploy`** 并指向适配器/框架要求的输出目录，**不是** `wrangler deploy`。
+
+---
+
 ## 应用依赖的 Cloudflare 资源（限流持久化）
 
 代码见 `src/lib/rate-storage/cloudflare.ts`：仅在运行时能拿到以下**同名绑定**时，才会启用跨实例一致的 KV + D1 限流；否则回退内存（见 `getRateStorage()`）。
@@ -130,5 +147,6 @@ npx wrangler d1 migrations apply nameforme_rate --remote
   npx --yes npm@10.9.2 ci    # 冒烟，复现 Cloudflare 的校验
   ```
 - **清 Cloudflare 构建缓存**：若仍有「Missing … from lock file」，进入 Pages 项目 **Settings → Builds → Clear build cache**，再触发 Retry deployment，避免缓存里旧 lock/`node_modules` 造成的残留。
+- **`Missing entry-point to Worker script`**：见上文 **Deploy command 留空**；删掉 **`npx wrangler deploy`** 后重新部署。
 - `**npm ci` / 其他 `Missing … from lock file`（Linux）**：同上，**必须用 npm 10.x** 生成 lock；也可以跑 `**npm run lock:sync`** 刷新 lock，再 `git add package-lock.json`。
 
