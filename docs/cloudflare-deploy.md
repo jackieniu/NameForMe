@@ -119,5 +119,6 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 - 限流始终像单机：检查生产环境是否同时存在 `BLOCKLIST` 与 `DB` 绑定；`hasCloudflareRateLimitBindings()` 为 false 时会只用内存。
 - D1 报错表不存在：确认已对**同一** `database_id` 执行过 `wrangler d1 migrations apply ... --remote`。
 - 绑定名写错：必须是 `BLOCKLIST` / `DB`，大小写敏感。
-- **`npm ci` / `Missing … from lock file`（Cloudflare 为 Linux）**：若在 **Windows** 上只跑过 `npm install`，`package-lock.json` 可能未包含 Linux 侧 optional 依赖的完整条目。请在提交前在本机执行一次 **`npm run lock:sync`**（或 `npm install --package-lock-only`），再 `git add package-lock.json`；并用 **`rm -rf node_modules && npm ci`** 自测通过后再推送。
+- **`npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：`next@15.2.4` 在 npm 元数据里仍声明 `@swc/helpers@0.5.15`，与 `next-intl` 拉起的 `@swc/core`（peer `>=0.5.17`）及根依赖 **0.5.21** 冲突。仓库已通过 **`package.json` 的 `overrides` + 根 `dependencies` 固定 0.5.21**，并在 **`package-lock.json` 的 `node_modules/next` 依赖块**中写为 **0.5.21**；请勿用旧 lock 覆盖。提交前请 **`rm -rf node_modules && npm ci`** 自测。
+- **`npm ci` / 其他 `Missing … from lock file`（Linux）**：在 **Windows** 上开发后建议执行 **`npm run lock:sync`**，再 `git add package-lock.json`，减少与 Cloudflare（Linux）optional 依赖树的差异。
 
