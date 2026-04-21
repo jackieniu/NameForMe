@@ -119,6 +119,15 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 - 限流始终像单机：检查生产环境是否同时存在 `BLOCKLIST` 与 `DB` 绑定；`hasCloudflareRateLimitBindings()` 为 false 时会只用内存。
 - D1 报错表不存在：确认已对**同一** `database_id` 执行过 `wrangler d1 migrations apply ... --remote`。
 - 绑定名写错：必须是 `BLOCKLIST` / `DB`，大小写敏感。
-- **`npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：`next@15.2.4` 在 npm 元数据里仍声明 `@swc/helpers@0.5.15`，与 `next-intl` 拉起的 `@swc/core`（peer `>=0.5.17`）及根依赖 **0.5.21** 冲突。仓库已通过 **`package.json` 的 `overrides` + 根 `dependencies` 固定 0.5.21**，并在 **`package-lock.json` 的 `node_modules/next` 依赖块**中写为 **0.5.21**；请勿用旧 lock 覆盖。提交前请 **`rm -rf node_modules && npm ci`** 自测。
-- **`npm ci` / 其他 `Missing … from lock file`（Linux）**：在 **Windows** 上开发后建议执行 **`npm run lock:sync`**，再 `git add package-lock.json`，减少与 Cloudflare（Linux）optional 依赖树的差异。
+- **`npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：根因是**本地 npm 版本与 Cloudflare 不一致**。Cloudflare Pages 固定 **npm 10.9.2**，而 npm **11.x** 生成的 `package-lock.json` 在 `npm ci` 严格校验下会被判定为「不同步」。`package.json` 已通过 **`engines.npm: ">=10.0.0 <11.0.0"`** 限制版本。在 **Windows / 本地开发机**上，请按下面命令重建 lock 后再提交：
+
+  ```powershell
+  Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
+  npx --yes npm@10.9.2 install
+  Remove-Item -Recurse -Force node_modules
+  npx --yes npm@10.9.2 ci    # 冒烟，复现 Cloudflare 的校验
+  ```
+
+  另外仓库保留了 `overrides["@swc/helpers"] = "0.5.21"` + 根 `dependencies` 固定 0.5.21，以平衡 `next@15.2.4`（声明 0.5.15）与 `next-intl` 拉起的 `@swc/core`（peer `>=0.5.17`）。
+- **`npm ci` / 其他 `Missing … from lock file`（Linux）**：同上，**必须用 npm 10.x** 生成 lock；也可以跑 **`npm run lock:sync`** 刷新 lock，再 `git add package-lock.json`。
 
