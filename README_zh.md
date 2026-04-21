@@ -136,22 +136,30 @@ LLM_MODEL=qwen2.5-14b-instruct
 
 ## ☁️ 部署
 
-| 平台                   | 说明                                                             |
-| -------------------- | -------------------------------------------------------------- |
-| **Vercel**           | Fork 本仓库 → 在 Vercel 导入该仓库 → 填环境变量，开箱即用                 |
-| **Cloudflare Pages** | `npm run build` → 绑定 KV `BLOCKLIST` 与 D1 `DB`（见 `wrangler.toml`） |
-| **Node 自托管**         | `npm run build && npm run start -- --port 3000`                |
+### Vercel（一键部署）
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjackieniu%2FNameForMe)
+
+点击按钮后按向导连接 GitHub，即可在 Vercel 从本仓库创建项目并完成首次部署。**部署完成后**，在 Vercel → Project → **Settings → Environment Variables** 中按 [`.env.example`](./.env.example) 填写 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 及域名检测等变量，然后重新部署一次使配置生效。
+
+### Cloudflare Pages
+
+`npm run build` → 绑定 KV `BLOCKLIST` 与 D1 `DB`（见 `wrangler.toml`）。
+
+### Node 自托管
+
+`npm run build && npm run start -- --port 3000`
 
 ---
 
-## 📜 常用脚本
+## 💬 意见与建议
 
-| 脚本                 | 作用              |
-| ------------------ | --------------- |
-| `npm run dev`      | 开发服务器           |
-| `npm run build`    | 生产构建            |
-| `npm run lint`     | ESLint          |
-| `npm run test:e2e` | Playwright 冒烟测试 |
+NameForMe 仍在持续迭代，非常希望听到你的声音。无论是功能想法、使用体验，还是发现了 Bug，都欢迎反馈：
+
+- **[提交 Issue](https://github.com/jackieniu/NameForMe/issues)**：描述复现步骤、期望行为或产品建议，便于跟踪与讨论。
+- **邮箱**：[nameforme@thesuper.me](mailto:nameforme@thesuper.me) — 若不便在 Issue 中公开讨论，可直接发邮件。
+
+每一条反馈都会被认真阅读，并直接影响后续版本的优先级与方向。感谢你帮助 NameForMe 变得更好。
 
 ---
 
