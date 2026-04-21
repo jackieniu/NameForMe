@@ -91,11 +91,11 @@ function tldOf(domain: string): string {
   return i === -1 ? "" : domain.slice(i).toLowerCase();
 }
 
-/** 右侧列表关键词：按空格分词，各词均需在「域名 + 说明」中出现（不区分大小写） */
+/** 右侧列表关键词：按空格分词，各词均需在完整域名（FQDN）中出现（不区分大小写） */
 function domainMatchesListKeyword(row: DomainResultItem, raw: string): boolean {
   const t = raw.trim().toLowerCase();
   if (!t) return true;
-  const hay = `${row.domain} ${row.reason ?? ""}`.toLowerCase();
+  const hay = row.domain.toLowerCase();
   const tokens = t.split(/\s+/).filter(Boolean);
   if (tokens.length === 0) return true;
   return tokens.every((tok) => hay.includes(tok));

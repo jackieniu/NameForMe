@@ -2,10 +2,10 @@
  * 接口级限流 + 黑名单。
  *
  * 存储由 `rate-storage` 抽象：
- * - 生产 (Cloudflare Pages/Workers): KV 黑名单 + D1 原子计数，跨 isolate 一致。
- * - 本地 / 未配置绑定: 进程内内存，仅当前 isolate 有效。
+ * - 已绑定 Cloudflare KV + D1：`tryConsumeApiSlot` 用 D1 原子计数 + KV 黑名单，跨实例一致。
+ * - 无绑定（本地、Vercel 等）：**不调用** `tryConsumeApiSlot`（见 `api-protection`），无「伪全局限流」。
  *
- * 流程：
+ * 流程（仅绑定 KV+D1 且 `tryConsumeApiSlot` 被调用时）：
  * 1. 查黑名单（KV 快路径，命中即拒）。
  * 2. `incrementCounters` 原子 +1 三个计数器（site_h / ip_h / ip_d）并拿到新值。
  * 3. 若任一计数器 > 阈值 -> 拒绝。被拒请求也占配额，防止攻击者卡阈值边缘。
@@ -15,7 +15,12 @@
  * 攻击成本已经足够高，跨 isolate 不一致带来的「多个 isolate 各容忍 5 次」可接受）。
  */
 
-import { getRateStorage, secondsToNextDay, secondsToNextHour } from "./rate-storage";
+import {
+  getRateStorage,
+  hasCloudflareRateLimitBindings,
+  secondsToNextDay,
+  secondsToNextHour,
+} from "./rate-storage";
 import type { RateStorage } from "./rate-storage";
 
 /** 单 IP：每小时、每天 */
@@ -174,6 +179,28 @@ export async function getRateStatus(
   ip: string,
   storage: RateStorage = getRateStorage(),
 ): Promise<RateStatus> {
+  if (!hasCloudflareRateLimitBindings()) {
+    const blocked = await storage.isBlocked(ip);
+    const cap = Math.min(
+      API_RATE_IP_PER_HOUR,
+      API_RATE_IP_PER_DAY,
+      API_RATE_SITE_PER_HOUR,
+    );
+    return {
+      ipHourUsed: 0,
+      ipHourLimit: API_RATE_IP_PER_HOUR,
+      ipHourLeft: API_RATE_IP_PER_HOUR,
+      ipDayUsed: 0,
+      ipDayLimit: API_RATE_IP_PER_DAY,
+      ipDayLeft: API_RATE_IP_PER_DAY,
+      siteHourUsed: 0,
+      siteHourLimit: API_RATE_SITE_PER_HOUR,
+      siteHourLeft: API_RATE_SITE_PER_HOUR,
+      remaining: blocked ? 0 : cap,
+      blocked,
+    };
+  }
+
   const now = new Date();
   const snap = await storage.readStatus(ip, now);
 

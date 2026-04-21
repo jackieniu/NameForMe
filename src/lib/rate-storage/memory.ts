@@ -1,6 +1,6 @@
 /** 进程内内存存储。单 Node / 单 isolate 有效；Cloudflare 多 isolate 部署下不可靠。
  *
- * 仅在本地开发、未配置 Cloudflare 绑定时作为降级使用。
+ * 作为 `getRateStorage()` 在无 KV+D1 绑定时的降级后端；**全站 API 配额限流仅在存在绑定时启用**（见 `api-protection`）。
  */
 
 import {

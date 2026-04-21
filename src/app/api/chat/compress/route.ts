@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     return Response.json(
       {
         error:
-          "未配置大模型 API，无法压缩对话历史。请设置 LLM_API_KEY 等，参见 .env.example。",
+          "大模型配置不完整，无法压缩对话历史。请设置 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL；参见 .env.example。",
         code: "LLM_NOT_CONFIGURED",
       },
       { status: 503 },

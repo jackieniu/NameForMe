@@ -124,7 +124,7 @@
     "noResults": "No available domains in this batch — chat to refine and generate again.",
     "generateMissingStrategies": "No valid generation strategies were found in the reply. Add a bit more context, or ask me to emit the strategy markers again.",
     "filterKeyword": "Keyword",
-    "filterKeywordPlaceholder": "Match domain or note…",
+    "filterKeywordPlaceholder": "Match domain…",
     "filterSuffix": "TLD",
     "filterSuffixAll": "All",
     "filterLength": "Host length",

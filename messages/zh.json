@@ -124,7 +124,7 @@
     "noResults": "本批没有可注册域名，可继续对话后再次生成。",
     "generateMissingStrategies": "未在回复中解析到有效的生成策略。请再说明一下需求，或让我重新输出带策略标记的生成指令。",
     "filterKeyword": "关键词",
-    "filterKeywordPlaceholder": "匹配域名或说明…",
+    "filterKeywordPlaceholder": "匹配域名…",
     "filterSuffix": "后缀",
     "filterSuffixAll": "全部",
     "filterLength": "主机长度",

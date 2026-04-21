@@ -318,7 +318,7 @@ export async function refineCandidatesWithAi(
   historyDomains?: Iterable<string>,
 ): Promise<RefineResult> {
   if (!isLlmConfigured()) {
-    throw new Error("大模型 API 未配置（LLM_API_KEY 等），无法进行 AI 域名精炼。");
+    throw new Error("大模型配置不完整（需 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL），无法进行 AI 域名精炼。");
   }
   // 单次 refine 的 prompt 输入上限收紧到 60：
   // - 90+ 条输入会让 DeepSeek 生成 60 条 JSON 结果（50 selected + 10 invented），单次耗时 ~100s；
@@ -518,7 +518,7 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
   locale: "en" | "zh",
 ): Promise<DomainResultItem[]> {
   if (!isLlmConfigured()) {
-    throw new Error("大模型 API 未配置（LLM_API_KEY 等），无法进行 AI 域名打分。");
+    throw new Error("大模型配置不完整（需 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL），无法进行 AI 域名打分。");
   }
   if (!items.length) return [];
 

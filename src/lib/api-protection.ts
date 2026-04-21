@@ -5,7 +5,11 @@ import {
   noteTurnstileFailure,
   tryConsumeApiSlot,
 } from "@/lib/rate-limit";
-import { getMemoryOnlyStorage, getRateStorage } from "@/lib/rate-storage";
+import {
+  getMemoryOnlyStorage,
+  getRateStorage,
+  hasCloudflareRateLimitBindings,
+} from "@/lib/rate-storage";
 import { isTurnstileEnforced, verifyTurnstileToken } from "@/lib/turnstile";
 
 export { getClientIp } from "@/lib/rate-limit";
@@ -32,7 +36,7 @@ export function jsonGateErrorResponse(g: Extract<ApiGateResult, { ok: false }>):
 }
 
 /**
- * 面向计费 (LLM / 外部付费) 接口：Turnstile -> 持久化存储 (KV + D1 / 内存) 限流。
+ * 面向计费 (LLM / 外部付费) 接口：Turnstile；**仅 Cloudflare 已绑定 KV+D1 时**再走全局限流。
  * 通过返回 null；否则返回错误 Response。
  */
 export async function protectAfterJsonParsed(opts: {
@@ -54,14 +58,16 @@ export async function protectAfterJsonParsed(opts: {
     }
   }
 
-  const gate = await tryConsumeApiSlot(ip, storage);
-  if (!gate.ok) return jsonGateErrorResponse(gate);
+  if (hasCloudflareRateLimitBindings()) {
+    const gate = await tryConsumeApiSlot(ip, storage);
+    if (!gate.ok) return jsonGateErrorResponse(gate);
+  }
   return null;
 }
 
 /**
- * 面向非计费接口 (`/api/domains/check` 等)：只做内存限流 + 内存黑名单，
- * 不消耗 KV / D1。跨 isolate 不一致，但对我方无外部费用，可接受。
+ * 面向非计费接口 (`/api/domains/check` 等)：内存黑名单；**无 CF KV+D1 绑定时不占配额**。
+ * 有绑定时仍只对 check 使用进程内计数（不写入 D1），与历史行为一致。
  */
 export async function protectRateOnly(req: Request): Promise<Response | null> {
   const storage = getMemoryOnlyStorage();
@@ -69,7 +75,9 @@ export async function protectRateOnly(req: Request): Promise<Response | null> {
   if (await isIpBlocked(ip, storage)) {
     return Response.json({ code: "IP_BLOCKED" }, { status: 403 });
   }
-  const gate = await tryConsumeApiSlot(ip, storage);
-  if (!gate.ok) return jsonGateErrorResponse(gate);
+  if (hasCloudflareRateLimitBindings()) {
+    const gate = await tryConsumeApiSlot(ip, storage);
+    if (!gate.ok) return jsonGateErrorResponse(gate);
+  }
   return null;
 }

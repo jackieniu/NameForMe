@@ -42,8 +42,7 @@ export async function POST(req: Request) {
     return new Response(
       JSON.stringify({
         error:
-          "未配置大模型 API。请在环境变量中设置 LLM_API_KEY（或 OPENAI_API_KEY / DEEPSEEK_API_KEY），" +
-          "可选 LLM_BASE_URL、LLM_MODEL；参见 .env.example。",
+          "大模型配置不完整。请在环境变量中设置 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL；参见 .env.example。",
         code: "LLM_NOT_CONFIGURED",
       }),
       { status: 503, headers: { "Content-Type": "application/json" } },

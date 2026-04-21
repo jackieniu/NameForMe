@@ -145,6 +145,11 @@ export function getCloudflareBindings(): CloudflareBindings | null {
   return null;
 }
 
+/** 已绑定 KV `BLOCKLIST` + D1 `DB` 时返回 true；仅此时启用跨实例一致的 API 配额限流。 */
+export function hasCloudflareRateLimitBindings(): boolean {
+  return getCloudflareBindings() != null;
+}
+
 export function tryCreateCloudflareStorage(): CloudflareRateStorage | null {
   const b = getCloudflareBindings();
   if (!b) return null;

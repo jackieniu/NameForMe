@@ -1,5 +1,11 @@
 import { z } from "zod";
 
+/** 前端在未加载 Turnstile 时常发 `""`；与「未传」同等视为未提供 token。 */
+const optionalTurnstileTokenSchema = z.preprocess(
+  (v) => (v === "" || v === null || v === undefined ? undefined : v),
+  z.string().min(1).optional(),
+);
+
 const requirementsBaseSchema = z.object({
   homeScenarioLabel: z.string().max(200).optional(),
   description: z.string().min(1).max(4000),
@@ -60,7 +66,7 @@ export const generateBodySchema = z.object({
   /** 为 true 时返回 NDJSON 流（progress 行 + 最后一行 complete） */
   stream: z.boolean().optional(),
   /** Cloudflare Turnstile；生产配置 `TURNSTILE_SECRET_KEY` 时必填 */
-  turnstileToken: z.string().min(1).optional(),
+  turnstileToken: optionalTurnstileTokenSchema,
 });
 
 export const checkBodySchema = z.object({
