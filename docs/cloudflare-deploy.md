@@ -21,17 +21,29 @@
 
 ---
 
-## Pages 控制台：构建设置（必看）
+## 控制台：构建设置（必看）
+
+> 界面可能是 **Workers** 里的 **Build** 标签（带 GitHub 连接、`Build configuration` 表格），不一定是「Pages → Settings」。**Deploy command 在 Build 页里**，不在第一张图那种「Settings → 域名 / 变量」页。
 
 | 项 | 建议 |
 | -- | -- |
 | **Root directory** | 若仓库根不是 Next 应用，填 **`code`**（与 `package.json` 同目录）；否则留空或 `.`。 |
 | **Build command** | `npm run build`（或先 `npm ci` 已由平台执行时只写 `npm run build`）。 |
-| **Deploy command** | **留空**（推荐）。Pages 会在 `npm run build` 成功后**自动**发布构建产物。 |
+| **Deploy command** | **不要**保留默认的 `npx wrangler deploy`。见下文。 |
 
-**如何改（控制台路径）**：**Workers & Pages** → 点进你的 **Pages 项目** → **Settings** → **Builds & deployments**（或 **Build**）→ 找到 **Deploy command** / **部署命令** → **整行删除**（不要留空格）→ **Save** → 再触发一次**新**部署（push 新 commit，或用 **Create deployment**）。若构建日志里仍出现 `Executing user deploy command: npx wrangler deploy`，说明该字段**还没保存成功**或改的是别的环境（Production / Preview 各查一遍）。
+**如何改（与截图一致的路径）**：**Workers & Pages** → 点进项目 **nameforme** → 顶部选 **Build**（不是 Settings）→ **Build configuration** 右侧 **铅笔（Edit）** → 找到 **Deploy command** 那一行：
 
-**若界面无法清空**（偶发）：把 Deploy command 改成 **`npm run cf:noop-deploy`**（仓库 `package.json` 里已提供，仅占位成功退出，**不会**发布 Worker；真正上线仍由 Pages 在 build 后自动完成）。
+1. **优先**：整行**删除**（留空）→ 点页面上的 **Save / 保存**（不要只关抽屉或点浏览器返回）。
+2. **若不允许留空**：整行改成 **`npm run cf:noop-deploy`**（与 `package.json` 里 `scripts` 完全一致，区分大小写）→ **Save**。
+
+**怎么确认已生效**：保存后重新触发一次部署，打开**新**构建日志，搜索 `Executing user deploy command:`：
+
+- 若仍是 `npx wrangler deploy` → **配置没保存上**（未点 Save、改错环境、或 Preview / Production 两套里只改了一套）。请对 **Production** 与 **Preview** 各打开 Build 各保存一次。
+- 若变成 `npm run cf:noop-deploy` 或该行消失且部署成功 → 已对上。
+
+**若界面无法清空**（偶发）：把 Deploy command 改成 **`npm run cf:noop-deploy`**（仓库 `package.json` 里已提供，仅占位成功退出）。
+
+**产品类型说明**：本仓库是 **Next.js 全栈**（含 `app/api`）。若你建的是 **Cloudflare Pages** 项目，清空 Deploy command 后一般由平台在 build 后自动发布。若你建的是 **Workers + Git** 流水线，默认模板里的 `npx wrangler deploy` 与本仓库的 `wrangler.toml`（无 `main`、无 `[assets]`）**不兼容**；要么按上法改掉 deploy，要么改用 **Pages** 或按官方文档接入 **OpenNext for Cloudflare** 等再配 `wrangler deploy`。仅用 noop 只能让**流水线变绿**，若产品实际是 Workers 且必须 `wrangler deploy` 才能上线，还需单独接适配器产物。
 
 **不要**把 **Deploy command** 写成 `npx wrangler deploy`：
 
