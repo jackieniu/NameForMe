@@ -130,7 +130,7 @@ LLM_MODEL=qwen2.5-14b-instruct
 
 ### Cloudflare Pages
 
-`npm run build` 后，在 Cloudflare 创建 KV / D1、填写 `wrangler.toml` 或在控制台绑定 `BLOCKLIST` + `DB`。完整步骤见 `**[docs/cloudflare-deploy.md](./docs/cloudflare-deploy.md)`**。
+`npm run build` 后，在 Cloudflare 创建 KV / D1、填写 `wrangler.toml` 或在控制台绑定 `BLOCKLIST` + `DB`。**Pages 项目设置里的「Deploy command」请勿填 `npx wrangler deploy`**（应留空，或填 `npm run cf:noop-deploy`），否则会报 Missing entry-point。完整步骤见 **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**。
 
 ### Node 自托管
 

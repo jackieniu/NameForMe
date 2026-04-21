@@ -27,7 +27,11 @@
 | -- | -- |
 | **Root directory** | 若仓库根不是 Next 应用，填 **`code`**（与 `package.json` 同目录）；否则留空或 `.`。 |
 | **Build command** | `npm run build`（或先 `npm ci` 已由平台执行时只写 `npm run build`）。 |
-| **Deploy command** | **留空**。Pages 会在 `npm run build` 成功后**自动**发布构建产物。 |
+| **Deploy command** | **留空**（推荐）。Pages 会在 `npm run build` 成功后**自动**发布构建产物。 |
+
+**如何改（控制台路径）**：**Workers & Pages** → 点进你的 **Pages 项目** → **Settings** → **Builds & deployments**（或 **Build**）→ 找到 **Deploy command** / **部署命令** → **整行删除**（不要留空格）→ **Save** → 再触发一次**新**部署（push 新 commit，或用 **Create deployment**）。若构建日志里仍出现 `Executing user deploy command: npx wrangler deploy`，说明该字段**还没保存成功**或改的是别的环境（Production / Preview 各查一遍）。
+
+**若界面无法清空**（偶发）：把 Deploy command 改成 **`npm run cf:noop-deploy`**（仓库 `package.json` 里已提供，仅占位成功退出，**不会**发布 Worker；真正上线仍由 Pages 在 build 后自动完成）。
 
 **不要**把 **Deploy command** 写成 `npx wrangler deploy`：
 

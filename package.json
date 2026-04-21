@@ -9,6 +9,7 @@
     "lint": "next lint",
     "test:e2e": "playwright test",
     "cf:login": "wrangler login",
+    "cf:noop-deploy": "node -e \"process.exit(0)\"",
     "lock:sync": "npm install --package-lock-only"
   },
   "dependencies": {

@@ -144,7 +144,7 @@ Connect GitHub in the wizard to create a project from this repo and run the firs
 
 ### Cloudflare Pages
 
-After `npm run build`, create KV + D1 in Cloudflare, fill `wrangler.toml`, or add **Bindings** `BLOCKLIST` + `DB` in the Pages project. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
+After `npm run build`, create KV + D1 in Cloudflare, fill `wrangler.toml`, or add **Bindings** `BLOCKLIST` + `DB` in the Pages project. **Do not** set **Deploy command** to `npx wrangler deploy` (leave it empty, or use `npm run cf:noop-deploy`); otherwise you get *Missing entry-point*. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
 
 ### Node (self-hosted)
 
