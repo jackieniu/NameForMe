@@ -119,20 +119,16 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 - 限流始终像单机：检查生产环境是否同时存在 `BLOCKLIST` 与 `DB` 绑定；`hasCloudflareRateLimitBindings()` 为 false 时会只用内存。
 - D1 报错表不存在：确认已对**同一** `database_id` 执行过 `wrangler d1 migrations apply ... --remote`。
 - 绑定名写错：必须是 `BLOCKLIST` / `DB`，大小写敏感。
-- **`npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：常见有两个诱因，通常叠加出现：
-
-  1. **本地 npm 版本与 Cloudflare 不一致**：Cloudflare Pages 固定 **npm 10.9.2**，而 npm **11.x** 生成的 `package-lock.json` 会被 `npm ci` 的严格校验判定为「不同步」。`package.json` 已通过 **`engines.npm: ">=10.0.0 <11.0.0"`** 限制。
-  2. **`overrides` 在 npm 10 下的行为差异**：早期我们用 `overrides` 强制 `@swc/helpers@0.5.21`，导致 lock 校验出现「需要却找不到」的误报。当前方案已**移除 `overrides` 和根 `dependencies["@swc/helpers"]`**，由 `next@15.2.4` 自带的 **0.5.15** 接管；`next-intl` 的 `@swc/core` 是 **optional peer**，不会导致安装失败。
-
+- `**npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：常见有两个诱因，通常叠加出现：
+  1. **本地 npm 版本与 Cloudflare 不一致**：Cloudflare Pages 构建环境常用 **npm 10.9.x**，而 npm **11.x** 生成的 `package-lock.json` 可能与 `npm ci` 严格校验不兼容。**请勿**在 `package.json` 里写 `engines.npm` 为**范围**（如 `>=10 <11`）：Pages 会把整段字符串当成「工具版本名」解析，导致 **Installing tools** 阶段直接失败。本地生成 lock 时请用 **`npx npm@10.9.2 install`**（见下文命令）。
+  2. `**overrides` 在 npm 10 下的行为差异**：早期我们用 `overrides` 强制 `@swc/helpers@0.5.21`，导致 lock 校验出现「需要却找不到」的误报。当前方案已**移除 `overrides` 和根 `dependencies["@swc/helpers"]`**，由 `next@15.2.4` 自带的 **0.5.15** 接管；`next-intl` 的 `@swc/core` 是 **optional peer**，不会导致安装失败。
   在 **Windows / 本地开发机**上，请按下面命令重建 lock 后再提交：
-
   ```powershell
   Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
   npx --yes npm@10.9.2 install
   Remove-Item -Recurse -Force node_modules
   npx --yes npm@10.9.2 ci    # 冒烟，复现 Cloudflare 的校验
   ```
-
 - **清 Cloudflare 构建缓存**：若仍有「Missing … from lock file」，进入 Pages 项目 **Settings → Builds → Clear build cache**，再触发 Retry deployment，避免缓存里旧 lock/`node_modules` 造成的残留。
-- **`npm ci` / 其他 `Missing … from lock file`（Linux）**：同上，**必须用 npm 10.x** 生成 lock；也可以跑 **`npm run lock:sync`** 刷新 lock，再 `git add package-lock.json`。
+- `**npm ci` / 其他 `Missing … from lock file`（Linux）**：同上，**必须用 npm 10.x** 生成 lock；也可以跑 `**npm run lock:sync`** 刷新 lock，再 `git add package-lock.json`。
 
