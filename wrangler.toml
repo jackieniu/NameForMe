@@ -1,0 +1,21 @@
+# Cloudflare Pages / Workers binding 配置。
+# 生产上线时本地先执行：
+#   wrangler kv:namespace create BLOCKLIST
+#   wrangler d1 create nameforme_rate
+#   wrangler d1 migrations apply nameforme_rate --remote
+# 再把下方 id 填成真实值；Pages 项目在 dashboard > Settings > Functions > Bindings 里
+# 引用同名 KV namespace (BLOCKLIST) 与 D1 database (DB)。
+
+name = "nameforme"
+compatibility_date = "2025-02-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "BLOCKLIST"
+id = "REPLACE_WITH_KV_NAMESPACE_ID"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nameforme_rate"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
