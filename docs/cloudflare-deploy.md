@@ -92,7 +92,7 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 1. **Functions** → **KV namespace bindings** → Variable name：`BLOCKLIST` → 选择上面创建的 KV。
 2. **Functions** → **D1 database bindings** → Variable name：`DB` → 选择 `nameforme_rate`。
 
-绑定名必须是 `**BLOCKLIST`** 和 `**DB`**（与代码探测一致）。
+绑定名必须是 `BLOCKLIST` 和 `DB`（与代码探测一致）。
 
 ---
 
@@ -119,4 +119,5 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 - 限流始终像单机：检查生产环境是否同时存在 `BLOCKLIST` 与 `DB` 绑定；`hasCloudflareRateLimitBindings()` 为 false 时会只用内存。
 - D1 报错表不存在：确认已对**同一** `database_id` 执行过 `wrangler d1 migrations apply ... --remote`。
 - 绑定名写错：必须是 `BLOCKLIST` / `DB`，大小写敏感。
+- **`npm ci` / `Missing … from lock file`（Cloudflare 为 Linux）**：若在 **Windows** 上只跑过 `npm install`，`package-lock.json` 可能未包含 Linux 侧 optional 依赖的完整条目。请在提交前在本机执行一次 **`npm run lock:sync`**（或 `npm install --package-lock-only`），再 `git add package-lock.json`；并用 **`rm -rf node_modules && npm ci`** 自测通过后再推送。
 

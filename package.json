@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "cf:login": "wrangler login"
+    "cf:login": "wrangler login",
+    "lock:sync": "npm install --package-lock-only"
   },
   "dependencies": {
     "@swc/helpers": "0.5.21",
