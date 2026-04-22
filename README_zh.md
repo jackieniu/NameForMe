@@ -128,9 +128,9 @@ LLM_MODEL=qwen2.5-14b-instruct
 
 点击按钮后按向导连接 GitHub，即可在 Vercel 从本仓库创建项目并完成首次部署。**部署完成后**，在 Vercel → Project → **Settings → Environment Variables** 中按 `[.env.example](./.env.example)` 填写 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 及域名检测等变量，然后重新部署一次使配置生效。
 
-### Cloudflare Pages
+### Cloudflare（Workers + OpenNext）
 
-`npm run build` 后，在 Cloudflare 创建 KV / D1、填写 `wrangler.toml` 或在控制台绑定 `BLOCKLIST` + `DB`。**Pages 项目设置里的「Deploy command」请勿填 `npx wrangler deploy`**（应留空，或填 `npm run cf:noop-deploy`），否则会报 Missing entry-point。完整步骤见 **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**。
+使用 **OpenNext for Cloudflare**：本地 `npm run cf:build` / `npm run cf:deploy`；Git 连接时在控制台 **Build** 填 **`npm run cf:build`**、**Deploy** 填 **`npx wrangler deploy`**。KV / D1 绑定名 **`BLOCKLIST`**、**`DB`**；密钥只放在控制台变量，勿提交。说明见 **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**。
 
 ### Node 自托管
 

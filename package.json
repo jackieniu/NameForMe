@@ -9,7 +9,10 @@
     "lint": "next lint",
     "test:e2e": "playwright test",
     "cf:login": "wrangler login",
-    "cf:noop-deploy": "node -e \"process.exit(0)\"",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lock:sync": "npm install --package-lock-only"
   },
   "dependencies": {
@@ -18,7 +21,7 @@
     "ai": "^6.0.159",
     "fast-xml-parser": "^5.6.0",
     "lucide-react": "^1.8.0",
-    "next": "15.2.4",
+    "next": "15.5.15",
     "next-intl": "^4.9.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -30,13 +33,14 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@opennextjs/cloudflare": "^1.19.3",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "15.2.4",
+    "eslint-config-next": "15.5.15",
     "tailwindcss": "^4",
     "typescript": "^5",
     "wrangler": "^4.84.0"

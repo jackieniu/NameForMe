@@ -17,40 +17,44 @@
   - **Git 集成**：Cloudflare Dashboard → Pages → 连接本仓库，每次 push 构建部署（常见 CI 流程）。
   - **纯本地**：`wrangler login` 后，用 `wrangler pages deploy`（或你选用的 Next 适配器提供的命令）从本机上传构建产物；**不必**先推到 GitHub，但团队协同时仍建议用 Git 做版本管理。
 
-将 **Next.js 15 全栈应用** 部署到 Cloudflare Pages，通常还需要选用 **OpenNext for Cloudflare** 等适配方案以生成 Workers 兼容产物；本仓库根目录的 `wrangler.toml` 主要描述 **Pages Functions / Worker 侧需要的 KV + D1 绑定名**，与是否用 Git 连接无冲突。
+本仓库使用官方 [**OpenNext for Cloudflare**](https://opennext.js.org/cloudflare)（`@opennextjs/cloudflare`）：`npm run cf:build` 会生成 **`.open-next/worker.js`** 与静态资源目录，再由 **`wrangler deploy`** 发布到 **Cloudflare Workers** 运行时。
 
 ---
 
-## 控制台：构建设置（必看）
+## Pages 和 Workers 还要不要「两个一起用」？
 
-> 界面可能是 **Workers** 里的 **Build** 标签（带 GitHub 连接、`Build configuration` 表格），不一定是「Pages → Settings」。**Deploy command 在 Build 页里**，不在第一张图那种「Settings → 域名 / 变量」页。
+对**这一个 Next 全栈项目**，你只需要 **一条部署线**，不必再单独建一个「Pages 项目 + Worker 项目」各管一半。
 
-| 项 | 建议 |
-| -- | -- |
-| **Root directory** | 若仓库根不是 Next 应用，填 **`code`**（与 `package.json` 同目录）；否则留空或 `.`。 |
-| **Build command** | `npm run build`（或先 `npm ci` 已由平台执行时只写 `npm run build`）。 |
-| **Deploy command** | **不要**保留默认的 `npx wrangler deploy`。见下文。 |
+| 概念 | 说明 |
+|------|------|
+| **Workers** | Cloudflare 上跑 SSR / API 的**运行时**（`workerd`）。OpenNext 打出来的站点**就是**一个 Worker + 静态资源。 |
+| **Pages（产品名）** | 常用来托管前端 + Functions；也可用 **Workers Builds + Git** 连同一仓库，本质仍是「构建后发布 Worker」。 |
+| **密钥放哪** | **`LLM_API_KEY`**、**`TURNSTILE_SECRET_KEY`**、阿里云 Secret 等只放在 Cloudflare **Variables and secrets**（或 Build 用的 **Build variables and secrets**），**不要**加 `NEXT_PUBLIC_` 前缀。服务端 Route Handler 读 `process.env.*`，**不会**打进浏览器包；这与「单独再建一个 Worker 项目」无关。 |
 
-**如何改（与截图一致的路径）**：**Workers & Pages** → 点进项目 **nameforme** → 顶部选 **Build**（不是 Settings）→ **Build configuration** 右侧 **铅笔（Edit）** → 找到 **Deploy command** 那一行：
+结论：**不用**为了保密再叠一个 Workers；在**当前 Worker 项目**里配好环境变量即可。
 
-1. **优先**：整行**删除**（留空）→ 点页面上的 **Save / 保存**（不要只关抽屉或点浏览器返回）。
-2. **若不允许留空**：整行改成 **`npm run cf:noop-deploy`**（与 `package.json` 里 `scripts` 完全一致，区分大小写）→ **Save**。
+---
 
-**怎么确认已生效**：保存后重新触发一次部署，打开**新**构建日志，搜索 `Executing user deploy command:`：
+## Workers Builds（Git 连接）：Build / Deploy 该怎么填
 
-- 若仍是 `npx wrangler deploy` → **配置没保存上**（未点 Save、改错环境、或 Preview / Production 两套里只改了一套）。请对 **Production** 与 **Preview** 各打开 Build 各保存一次。
-- 若变成 `npm run cf:noop-deploy` 或该行消失且部署成功 → 已对上。
+**Workers & Pages** → 你的项目 → **Build** → **Build configuration** → **Edit**：
 
-**若界面无法清空**（偶发）：把 Deploy command 改成 **`npm run cf:noop-deploy`**（仓库 `package.json` 里已提供，仅占位成功退出）。
+| 项 | 填写内容 |
+|----|----------|
+| **Root directory** | 若 `package.json` 在子目录 **`code/`**，填 **`code`**；若在仓库根则 `/` 或留空。 |
+| **Build command** | **`npm run cf:build`**（内部会执行 `next build` 并生成 `.open-next`）。 |
+| **Deploy command** | **`npx wrangler deploy`**（读取仓库根 `wrangler.toml` 的 `main`、`[assets]`、KV、D1）。 |
+| **Version command** | 若不需要 Workers Versions 流水线，可留空或与 Cloudflare 文档一致。 |
 
-**产品类型说明**：本仓库是 **Next.js 全栈**（含 `app/api`）。若你建的是 **Cloudflare Pages** 项目，清空 Deploy command 后一般由平台在 build 后自动发布。若你建的是 **Workers + Git** 流水线，默认模板里的 `npx wrangler deploy` 与本仓库的 `wrangler.toml`（无 `main`、无 `[assets]`）**不兼容**；要么按上法改掉 deploy，要么改用 **Pages** 或按官方文档接入 **OpenNext for Cloudflare** 等再配 `wrangler deploy`。仅用 noop 只能让**流水线变绿**，若产品实际是 Workers 且必须 `wrangler deploy` 才能上线，还需单独接适配器产物。
+保存后重新部署；日志中应出现 **OpenNext build complete**，且 **`wrangler deploy`** 上传成功。此后 **Deployments / Version history** 会出现新版本。
 
-**不要**把 **Deploy command** 写成 `npx wrangler deploy`：
+本地等价：`npm run cf:deploy`（`cf:build` + `opennextjs-cloudflare deploy`）。
 
-- `wrangler deploy` 用于发布**独立 Cloudflare Worker**，要求 `wrangler.toml` 里配置 **`main = "…"`**（脚本入口）或 **`[assets]`**（静态目录），否则会报错：`Missing entry-point to Worker script or to assets directory`。
-- 本仓库的 `wrangler.toml` **只有** KV / D1 绑定，**没有** Worker 入口；绑定在 **Pages → Settings → Functions → Bindings** 与本地 `wrangler dev` 使用即可。
+**说明**：日常开发仍用 **`npm run dev`**（Node 下 Next）；与线上完全一致可用 **`npm run cf:preview`**（较慢，见 OpenNext 文档）。
 
-若要从本机手动上传 Pages（不走 Git），用 **`npx wrangler pages deploy`** 并指向适配器/框架要求的输出目录，**不是** `wrangler deploy`。
+### 构建期环境变量（Workers Builds）
+
+若 SSG 等步骤要在 **build** 时读取非 `NEXT_PUBLIC_*` 的变量，请在 Cloudflare **Build variables and secrets** 中配置（见 [OpenNext 环境变量说明](https://opennext.js.org/cloudflare/howtos/env-vars#workers-builds)）。运行时密钥仍在 **Variables and secrets**。
 
 ---
 
@@ -65,7 +69,7 @@
 | `DB`        | D1 Database  | 表 `rate_counters`（全站 / IP 小时与全天计数） |
 
 
-**不要求**把 KV/D1 的 ID 写进 `.env`；生产上在 **Cloudflare Pages 项目 → Settings → Functions → Bindings** 里绑定即可。本地用 `wrangler dev` / `wrangler pages dev` 时，则依赖仓库根目录 `wrangler.toml` 里的 `[[kv_namespaces]]` / `[[d1_databases]]`。
+**不要求**把 KV/D1 的 ID 写进 `.env`；生产上在 **Worker 项目 → Settings → Bindings**（或 **Bindings** 标签）里绑定与 `wrangler.toml` **同名**的 `BLOCKLIST`、`DB` 即可（若控制台与 `wrangler.toml` 重复配置，以 Cloudflare 文档为准，避免冲突）。本地预览用 **`npm run cf:preview`** 或 `wrangler dev` 时，依赖仓库根目录 `wrangler.toml` 里的 `[[kv_namespaces]]` / `[[d1_databases]]`。
 
 ---
 
@@ -118,32 +122,27 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 
 ---
 
-## Cloudflare Pages 控制台绑定（Git 或 CLI 部署后都要做）
+## 控制台绑定 KV + D1（Git 或 CLI 部署后都要做）
 
-若通过 **Dashboard 连接 Git** 部署，且未使用仓库内 `wrangler.toml` 自动同步绑定，请在 Pages 项目里手动添加：
+在 **Worker 项目**（或 Pages 项目，若你改用 Pages）里添加：
 
-1. **Functions** → **KV namespace bindings** → Variable name：`BLOCKLIST` → 选择上面创建的 KV。
-2. **Functions** → **D1 database bindings** → Variable name：`DB` → 选择 `nameforme_rate`。
+1. **KV namespace binding** → Variable name：**`BLOCKLIST`** → 选择已创建的 KV。
+2. **D1 database binding** → Variable name：**`DB`** → 选择 D1 数据库（逻辑名可为 `nameforme_rate`）。
 
-绑定名必须是 `BLOCKLIST` 和 `DB`（与代码探测一致）。
+绑定名必须是 **`BLOCKLIST`** 和 **`DB`**（与 `src/lib/rate-storage/cloudflare.ts` 一致）。
 
 ---
 
 ## 与 `.env` 的关系
 
-- **Turnstile**（可选）：`NEXT_PUBLIC_TURNSTILE_SITE_KEY`、`TURNSTILE_SECRET_KEY` 仍放在 **环境变量**（Pages → Settings → Environment variables），见根目录 `.env.example`。
-- **KV / D1**：由 **Bindings** 注入运行时 `env`，**不要**把 `database_id` 当密钥写进前端；`wrangler.toml` 中的 id 可提交仓库（团队共享），或仅放在 CI 机密里由流水线写入。
+- **Turnstile**（可选）：`NEXT_PUBLIC_TURNSTILE_SITE_KEY`、`TURNSTILE_SECRET_KEY` 放在 **Variables and secrets**（及构建需要的 **Build variables and secrets**），见根目录 `.env.example`。
+- **KV / D1**：由 **Bindings** 注入运行时 `env`；`wrangler.toml` 里的 `id` / `database_id` 是资源标识符，**不要**把 API Token 写进仓库。
 
 ---
 
-## 当前仓库里的占位
+## `wrangler.toml` 里的 id
 
-根目录 `wrangler.toml` 中为：
-
-- `REPLACE_WITH_KV_NAMESPACE_ID` → 应替换为 KV `BLOCKLIST` 的 **id**
-- `REPLACE_WITH_D1_DATABASE_ID` → 应替换为 D1 `nameforme_rate` 的 **database_id**
-
-若采用 **方案 B**（不写真实 id 进 Git）：保留仓库内占位不变；在本机 `wrangler.local.toml` 写入完整真实配置，并用 `--config wrangler.local.toml` 执行 Wrangler。若采用 **方案 A**（仅控制台绑定）：占位可长期保留，部署后只在 Pages 控制台检查绑定名是否为 `BLOCKLIST` / `DB`。
+仓库内可保留 **真实或占位** KV/D1 id；不想暴露资源 id 时，用 **`wrangler.local.toml`**（已 `.gitignore`）覆盖，Wrangler 命令加 **`--config wrangler.local.toml`**。控制台 **Bindings** 与 `wrangler.toml` 二选一或并用时，以 Cloudflare 当前文档为准。
 
 ---
 
@@ -154,7 +153,7 @@ npx wrangler d1 migrations apply nameforme_rate --remote
 - 绑定名写错：必须是 `BLOCKLIST` / `DB`，大小写敏感。
 - `**npm ci` / `Missing @swc/helpers@0.5.21 from lock file`**：常见有两个诱因，通常叠加出现：
   1. **本地 npm 版本与 Cloudflare 不一致**：Cloudflare Pages 构建环境常用 **npm 10.9.x**，而 npm **11.x** 生成的 `package-lock.json` 可能与 `npm ci` 严格校验不兼容。**请勿**在 `package.json` 里写 `engines.npm` 为**范围**（如 `>=10 <11`）：Pages 会把整段字符串当成「工具版本名」解析，导致 **Installing tools** 阶段直接失败。本地生成 lock 时请用 **`npx npm@10.9.2 install`**（见下文命令）。
-  2. `**overrides` 在 npm 10 下的行为差异**：早期我们用 `overrides` 强制 `@swc/helpers@0.5.21`，导致 lock 校验出现「需要却找不到」的误报。当前方案已**移除 `overrides` 和根 `dependencies["@swc/helpers"]`**，由 `next@15.2.4` 自带的 **0.5.15** 接管；`next-intl` 的 `@swc/core` 是 **optional peer**，不会导致安装失败。
+  2. **锁文件与 npm 大版本**：本地若用 npm 11 生成 lock，Cloudflare（npm 10.9.x）`npm ci` 可能报不同步；本地刷新 lock 建议 **`npx npm@10.9.2 install`**。当前 Next 为 **15.5.x**（满足 OpenNext peer）。
   在 **Windows / 本地开发机**上，请按下面命令重建 lock 后再提交：
   ```powershell
   Remove-Item -Recurse -Force node_modules, package-lock.json -ErrorAction SilentlyContinue
@@ -163,6 +162,6 @@ npx wrangler d1 migrations apply nameforme_rate --remote
   npx --yes npm@10.9.2 ci    # 冒烟，复现 Cloudflare 的校验
   ```
 - **清 Cloudflare 构建缓存**：若仍有「Missing … from lock file」，进入 Pages 项目 **Settings → Builds → Clear build cache**，再触发 Retry deployment，避免缓存里旧 lock/`node_modules` 造成的残留。
-- **`Missing entry-point to Worker script`**：见上文 **Deploy command 留空**；删掉 **`npx wrangler deploy`** 后重新部署。
+- **`Missing entry-point to Worker script`**：先执行 **`npm run cf:build`** 生成 `.open-next`，且 `wrangler.toml` 已含 `main` 与 `[assets]`；Deploy 使用 **`npx wrangler deploy`**。若未跑 OpenNext 仍执行 `wrangler deploy` 会报错。
 - `**npm ci` / 其他 `Missing … from lock file`（Linux）**：同上，**必须用 npm 10.x** 生成 lock；也可以跑 `**npm run lock:sync`** 刷新 lock，再 `git add package-lock.json`。
 

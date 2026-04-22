@@ -142,9 +142,9 @@ LLM_MODEL=qwen2.5-14b-instruct
 
 Connect GitHub in the wizard to create a project from this repo and run the first deployment. **After deploy**, open **Settings → Environment Variables** and add everything required from [`.env.example`](./.env.example) (`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, registrar keys, etc.), then redeploy so the new values apply.
 
-### Cloudflare Pages
+### Cloudflare (Workers + OpenNext)
 
-After `npm run build`, create KV + D1 in Cloudflare, fill `wrangler.toml`, or add **Bindings** `BLOCKLIST` + `DB` in the Pages project. **Do not** set **Deploy command** to `npx wrangler deploy` (leave it empty, or use `npm run cf:noop-deploy`); otherwise you get *Missing entry-point*. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
+Use **OpenNext for Cloudflare**: locally `npm run cf:build` / `npm run cf:deploy`. With Git-connected **Workers Builds**, set **Build** to **`npm run cf:build`** and **Deploy** to **`npx wrangler deploy`**. Bind KV/D1 as **`BLOCKLIST`** and **`DB`**; keep secrets in dashboard variables only. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
 
 ### Node (self-hosted)
 
