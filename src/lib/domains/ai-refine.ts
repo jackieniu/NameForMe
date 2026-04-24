@@ -1,4 +1,4 @@
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 import { z } from "zod";
 import { getChatModel, isLlmConfigured } from "@/lib/ai/provider";
 import { normalizeRegistrableSuffix } from "@/lib/domains/candidate-generator";
@@ -403,14 +403,6 @@ export async function refineCandidatesWithAi(
         model: getChatModel(),
         prompt: fullPrompt,
         maxOutputTokens: 8192,
-        /** DeepSeek / OpenAI 兼容：`response_format: { type: "json_object" }`，见 https://api-docs.deepseek.com/zh-cn/api/create-chat-completion */
-        output: Output.json({
-          name: "domain_refine_result",
-          description:
-            locale === "zh"
-              ? "根对象含 selected、invented；每项为 { domain, note }"
-              : "Root object with selected and invented; each item { domain, note }",
-        }),
       });
 
       let rawJson = tryCoerceRootObjectFromResult(result);
@@ -518,9 +510,11 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
   locale: "en" | "zh",
 ): Promise<DomainResultItem[]> {
   if (!isLlmConfigured()) {
+    console.error("[ai-refine] LLM not configured, skipping post-score");
     throw new Error("大模型配置不完整（需 LLM_API_KEY、LLM_BASE_URL、LLM_MODEL），无法进行 AI 域名打分。");
   }
   if (!items.length) return [];
+  console.log("[ai-refine] post-score starting, items:", items.length, "locale:", locale);
 
   const allowed = new Set(items.map((i) => i.domain.toLowerCase()));
   const byDomain = new Map(items.map((i) => [i.domain.toLowerCase(), i] as const));
@@ -619,6 +613,7 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
 
   const basePrompt = locale === "zh" ? promptZh : promptEn;
   const startTs = Date.now();
+  let lastError = "";
 
   for (let attempt = 0; attempt < MAX_FINAL_SCORE_CALLS; attempt++) {
     const fullPrompt =
@@ -634,17 +629,16 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
         model: getChatModel(),
         prompt: fullPrompt,
         maxOutputTokens: 8192,
-        output: Output.json({
-          name: "domain_post_score",
-          description: "Root object with selected array of {domain,note,score}",
-        }),
       });
 
       let rawJson = tryCoerceRootObjectFromResult(result);
       rawJson = unwrapNestedRefinePayload(rawJson);
       const normalized = normalizePostScoreJsonPayload(rawJson);
       const parsed = postScoreSchema.safeParse(normalized);
-      if (!parsed.success) continue;
+      if (!parsed.success) {
+        console.error("[ai-refine] post-score parse failed attempt", attempt, JSON.stringify(normalized)?.slice(0, 300));
+        continue;
+      }
 
       // 后端硬过滤：质量分**完全由 AI 给出**，本层只做单一阈值过滤，**没有任何数量上下限**。
       // 1) AI 没显式打分 → schema 解析时按 0 分处理，会被阈值过滤
@@ -709,22 +703,47 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
       // 退化到原始候选（那样会把垃圾域名展示给用户，违背质量把关初衷）。
       out.sort((a, b) => b.score - a.score);
       return out;
-    } catch {
-      /* try next attempt */
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      console.error("[ai-refine] post-score attempt", attempt, "threw:", lastError);
     }
   }
 
-  // 走到这里只有一种情况：AI 三次都调用/解析失败。
-  // 此时不再返回未过滤的原始候选（那是历史遗留的危险 fallback），
-  // 而是返回空数组，让上游统一走「无可用域名 + advisoryMessage」分支。
+  // 走到这里说明 AI 三次打分调用全部失败。
+  // 若因运行时「过多子请求 / subrequest 限制」等可识别为资源类错误，仍降级为未打分列表，避免白屏。
+  const isResourceError =
+    lastError.toLowerCase().includes("too many subrequest") ||
+    lastError.toLowerCase().includes("subrequest");
+  const fallbackReason = isResourceError
+    ? "subrequest limit reached — returning unscored available domains"
+    : "post-score AI failed after all attempts — returning unscored fallback";
+
   logRefine({
     locale,
     brief: userBrief,
     prompt: basePrompt,
     inputCount: list.length,
     input: list,
-    error: "post-score AI failed after all attempts; returning empty (no heuristic fallback)",
+    error: fallbackReason,
     durationMs: Date.now() - startTs,
   });
-  return [];
+
+  // 降级：按主名长度升序排（短名更具品牌感），给一个合理的基础分
+  const fallbackOut: DomainResultItem[] = items
+    .filter((it) => {
+      const sld = it.domain.includes(".") ? (it.domain.split(".")[0] ?? it.domain) : it.domain;
+      return !isShellLabel(sld);
+    })
+    .map((it) => {
+      const sld = it.domain.includes(".") ? (it.domain.split(".")[0] ?? it.domain) : it.domain;
+      const lengthScore = sld.length <= 6 ? 70 : sld.length <= 9 ? 65 : 60;
+      return { ...it, score: lengthScore };
+    })
+    .sort((a, b) => {
+      const aLen = (a.domain.split(".")[0] ?? a.domain).length;
+      const bLen = (b.domain.split(".")[0] ?? b.domain).length;
+      return aLen - bLen;
+    });
+
+  return fallbackOut;
 }

@@ -8,7 +8,7 @@ export default async function HistoryPage({ params }: Props) {
   setRequestLocale(locale);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <div className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-6">
       <HistoryClient />
     </div>
   );

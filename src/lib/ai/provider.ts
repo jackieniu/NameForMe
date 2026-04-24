@@ -9,7 +9,7 @@ import { createOpenAI } from "@ai-sdk/openai";
  * - `LLM_MODEL`
  *
  * 示例：
- * - DeepSeek：`LLM_BASE_URL=https://api.deepseek.com/v1` + `LLM_MODEL=deepseek-chat`
+ * - DeepSeek：`LLM_BASE_URL=https://api.deepseek.com/v1` + `LLM_MODEL=deepseek-v4-flash`
  * - OpenAI：`LLM_BASE_URL=https://api.openai.com/v1` + `LLM_MODEL=gpt-4o-mini`
  * - 本地 vLLM：`LLM_BASE_URL=http://127.0.0.1:8000/v1` + `LLM_MODEL=...`
  */

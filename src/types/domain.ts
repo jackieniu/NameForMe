@@ -55,7 +55,7 @@ export type DomainRequirements = {
 };
 
 export type RegistrationTier = "normal" | "premium" | "ultra-premium";
-export type RegistrarId = "namecheap" | "aliyun" | "porkbun";
+export type RegistrarId = "namecheap" | "aliyun" | "godaddy" | "cloudflare";
 
 export type DomainAvailabilityStatus = "available" | "taken" | "premium";
 

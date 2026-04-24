@@ -21,27 +21,21 @@
  *   type "aliyun_checkdomain"：阿里云 CheckDomain 失败排查（HTTP 非 2xx 或返回体带 Code）
  */
 
-import fs from "fs";
-import path from "path";
-
-// 日志文件路径：<project_root>/logs/ai-interactions.jsonl
-const LOG_DIR = path.join(process.cwd(), "logs");
-const LOG_FILE = path.join(LOG_DIR, "ai-interactions.jsonl");
-
-function ensureLogDir() {
-  if (!fs.existsSync(LOG_DIR)) {
-    fs.mkdirSync(LOG_DIR, { recursive: true });
-  }
-}
-
+// 日志输出：Node.js 写文件；无 fs 时回退到 console
 function appendLog(record: Record<string, unknown>) {
   try {
-    ensureLogDir();
-    const line = JSON.stringify(record) + "\n";
-    fs.appendFileSync(LOG_FILE, line, "utf8");
-  } catch (err) {
-    // 日志写入失败不影响主流程
-    console.error("[ai-logger] write failed:", err);
+    // 检测是否有可写文件系统（本地 Node.js 开发环境）
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require("fs") as typeof import("fs");
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require("path") as typeof import("path");
+    const LOG_DIR = path.join(process.cwd(), "logs");
+    const LOG_FILE = path.join(LOG_DIR, "ai-interactions.jsonl");
+    if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(LOG_FILE, JSON.stringify(record) + "\n", "utf8");
+  } catch {
+    // 无文件系统时仅打印到标准输出
+    console.log("[ai-log]", JSON.stringify(record).slice(0, 500));
   }
 }
 

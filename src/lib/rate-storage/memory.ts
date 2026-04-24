@@ -1,7 +1,4 @@
-/** 进程内内存存储。单 Node / 单 isolate 有效；Cloudflare 多 isolate 部署下不可靠。
- *
- * 作为 `getRateStorage()` 在无 KV+D1 绑定时的降级后端；**全站 API 配额限流仅在存在绑定时启用**（见 `api-protection`）。
- */
+/** 进程内内存存储；多实例/多进程不共享。未配置 Upstash 时作降级后端。 */
 
 import {
   dayKey,
@@ -44,7 +41,7 @@ function cleanup(now: Date): void {
     if (sep1 < 0 || sep2 <= sep1) continue;
     const scope = ck.slice(0, sep1);
     const win = ck.slice(sep2 + 1);
-    if ((scope === "site_h" || scope === "ip_h") && win < oldHour) {
+    if (scope === "site_h" && win < oldHour) {
       counters.delete(ck);
     } else if (scope === "ip_d" && win < oldDay) {
       counters.delete(ck);
@@ -87,7 +84,6 @@ export class MemoryRateStorage implements RateStorage {
     const dw = dayKey(now);
     const out: RateCounts = {
       siteHour: bump("site_h", "", hw),
-      ipHour: bump("ip_h", ip, hw),
       ipDay: bump("ip_d", ip, dw),
     };
     maybeCleanup(now);
@@ -99,7 +95,6 @@ export class MemoryRateStorage implements RateStorage {
     const dw = dayKey(now);
     return {
       siteHour: readCount("site_h", "", hw),
-      ipHour: readCount("ip_h", ip, hw),
       ipDay: readCount("ip_d", ip, dw),
       blocked: await this.isBlocked(ip),
     };

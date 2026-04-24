@@ -26,13 +26,14 @@ export async function SiteHeader() {
             aria-hidden
             priority
           />
-          <span className="leading-none">{brand("brand")}</span>
+          <span className="hidden md:inline leading-none">{brand("brand")}</span>
         </Link>
         <nav className="flex items-center gap-2 sm:gap-3">
           <SavedDomainsNav />
           <Link
             href="/history"
-            className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:px-3"
+            className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:px-2.5"
+            aria-label={t("history")}
           >
             <svg
               width="16"
@@ -43,11 +44,13 @@ export async function SiteHeader() {
               strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
+              aria-hidden
+              className="hidden md:block shrink-0"
             >
               <circle cx="8" cy="8" r="6.25" />
               <path d="M8 5v3l2 1.5" />
             </svg>
-            {t("history")}
+            <span>{t("history")}</span>
           </Link>
           <LanguageSwitcher />
         </nav>

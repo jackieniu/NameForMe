@@ -8,7 +8,7 @@ import {
 import {
   getMemoryOnlyStorage,
   getRateStorage,
-  hasCloudflareRateLimitBindings,
+  hasPersistedRateStorage,
 } from "@/lib/rate-storage";
 import { isTurnstileEnforced, verifyTurnstileToken } from "@/lib/turnstile";
 
@@ -36,12 +36,17 @@ export function jsonGateErrorResponse(g: Extract<ApiGateResult, { ok: false }>):
 }
 
 /**
- * 面向计费 (LLM / 外部付费) 接口：Turnstile；**仅 Cloudflare 已绑定 KV+D1 时**再走全局限流。
+ * 面向计费 (LLM / 外部付费) 接口：Turnstile；**仅已配置 Upstash Redis 时**再走全局限流。
  * 通过返回 null；否则返回错误 Response。
+ *
+ * skipTurnstile: 跳过 Turnstile 校验（用于次要接口，保留限流）。
+ * Turnstile token 是一次性的——同一 token 不能给两个接口共用，
+ * 故 compress 等低风险接口传 true，将唯一 token 留给 generate 接口。
  */
 export async function protectAfterJsonParsed(opts: {
   req: Request;
   turnstileToken: string | undefined;
+  skipTurnstile?: boolean;
 }): Promise<Response | null> {
   const storage = getRateStorage();
   const ip = getClientIp(opts.req);
@@ -50,7 +55,7 @@ export async function protectAfterJsonParsed(opts: {
     return Response.json({ code: "IP_BLOCKED" }, { status: 403 });
   }
 
-  if (isTurnstileEnforced()) {
+  if (!opts.skipTurnstile && isTurnstileEnforced()) {
     const ok = await verifyTurnstileToken(opts.turnstileToken, ip);
     if (!ok) {
       await noteTurnstileFailure(ip, storage);
@@ -58,7 +63,7 @@ export async function protectAfterJsonParsed(opts: {
     }
   }
 
-  if (hasCloudflareRateLimitBindings()) {
+  if (hasPersistedRateStorage()) {
     const gate = await tryConsumeApiSlot(ip, storage);
     if (!gate.ok) return jsonGateErrorResponse(gate);
   }
@@ -66,8 +71,8 @@ export async function protectAfterJsonParsed(opts: {
 }
 
 /**
- * 面向非计费接口 (`/api/domains/check` 等)：内存黑名单；**无 CF KV+D1 绑定时不占配额**。
- * 有绑定时仍只对 check 使用进程内计数（不写入 D1），与历史行为一致。
+ * 面向非计费接口 (`/api/domains/check` 等)：内存黑名单；**无持久化存储时不占配额**。
+ * 有绑定时仍只对 check 使用进程内计数（不写入远端存储），与历史行为一致。
  */
 export async function protectRateOnly(req: Request): Promise<Response | null> {
   const storage = getMemoryOnlyStorage();
@@ -75,7 +80,7 @@ export async function protectRateOnly(req: Request): Promise<Response | null> {
   if (await isIpBlocked(ip, storage)) {
     return Response.json({ code: "IP_BLOCKED" }, { status: 403 });
   }
-  if (hasCloudflareRateLimitBindings()) {
+  if (hasPersistedRateStorage()) {
     const gate = await tryConsumeApiSlot(ip, storage);
     if (!gate.ok) return jsonGateErrorResponse(gate);
   }

@@ -24,6 +24,9 @@ export async function POST(req: Request) {
   const denied = await protectAfterJsonParsed({
     req,
     turnstileToken: parsed.data.turnstileToken,
+    // Turnstile token 是一次性的；compress 是低风险的辅助接口，
+    // 跳过 Turnstile 校验，将唯一 token 留给 /api/domains/generate 使用。
+    skipTurnstile: true,
   });
   if (denied) return denied;
 

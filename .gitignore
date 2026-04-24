@@ -41,12 +41,11 @@ yarn-error.log*
 .env.*.local
 !.env.example
 
-# Cloudflare：本机真实 KV / D1 id（勿提交公开仓库）
-wrangler.local.toml
-.wrangler/
-
 # vercel
 .vercel
+
+# wrangler 本地状态（若曾运行过旧命令）
+.wrangler/
 
 # typescript
 *.tsbuildinfo

@@ -96,6 +96,7 @@
     "inputPlaceholder": "Type your message…",
     "startGenerate": "Start generating",
     "errorRetry": "Something went wrong. Try again.",
+    "genInterrupted": "Generation was interrupted (app went to background). Please ask to generate again.",
     "httpRateLimit": "Too many requests. Try again in {sec}s.",
     "httpSiteBusy": "The site is busy right now. Try again later.",
     "httpAccessDenied": "Verification failed or access denied. Refresh the page and try again.",
@@ -103,7 +104,10 @@
     "rateRemaining": "{n} uses left",
     "rateLoading": "Loading quota…",
     "rateBlocked": "Access blocked",
-    "rateDetail": "Personal hour left {ipHour} · day left {ipDay} · site hour left {siteHour}",
+    "rateDetail": "Personal day left {ipDay} · site hour left {siteHour}",
+    "rateBannerSiteHour": "Site capacity is full this hour. Please try again next hour.",
+    "rateBannerIpDay": "Your daily quota is used up. Please come back tomorrow (UTC midnight).",
+    "rateBannerBlocked": "Your access has been temporarily restricted. Please try again later.",
     "generating": "Generating…",
     "genStarting": "Generating domains…",
     "genExpandHint": "Checking domain availability…",
@@ -151,8 +155,10 @@
     "copyDomainsTooltip": "Copy all domains",
     "clearListTooltip": "Clear domain list",
     "registerOpenAliyun": "Register on Alibaba Cloud",
-    "registerOpenPorkbun": "Register on Porkbun",
+
     "registerOpenNamecheap": "Register on Namecheap",
+    "registerOpenGodaddy": "Register on GoDaddy",
+    "registerOpenCloudflare": "Register on Cloudflare",
     "favoriteFromListTooltip": "Add to favorites",
     "removeFromListTooltip": "Remove from list",
     "filterEmpty": "No domains match these filters — try adjusting them.",
@@ -163,8 +169,10 @@
     "priceLineUsdEn": "{price} USD first year · renew {renewal} USD/yr{tierNote}",
     "priceLineUnknown": "No reference price (see registrar)",
     "registerLinkAliyun": "Alibaba",
-    "registerLinkPorkbun": "Porkbun",
-    "registerLinkNamecheap": "Namecheap"
+
+    "registerLinkNamecheap": "Namecheap",
+    "registerLinkGodaddy": "GoDaddy",
+    "registerLinkCloudflare": "Cloudflare"
   },
   "Wizard": {
     "description": "Project description",

@@ -97,6 +97,19 @@ body {
 .stagger-5 { animation-delay: 0.5s; }
 .stagger-6 { animation-delay: 0.6s; }
 
+/* Chat mode: fix viewport height so inner panels scroll, not the page */
+body[data-chat-active] {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+/* Hide footer only on mobile/tablet */
+@media (max-width: 1023px) {
+  body[data-chat-active] footer {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up,
   .animate-fade-in,

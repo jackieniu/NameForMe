@@ -84,38 +84,53 @@ function buildRetryUserMessage(
 
 /**
  * 请求 chat AI 输出一套新的策略组合。
- * 失败时（模型出错 / 解析不到 [[STRATEGIES:...]] / 解析后策略全部已执行）返回 null，
- * 调用方应将此视为「穷尽」信号，不要再硬塞硬编码策略。
+ * 内置最多 3 次重试（解析失败或全部已执行时自动重试）。
+ * 全部尝试失败后返回 null，调用方应将此视为「穷尽」信号。
  */
 export async function requestRetryStrategies(
   req: DomainRequirements,
   locale: "en" | "zh",
   ctx: RetryContext,
 ): Promise<{ strategies: ParsedStrategy[]; assistantMessage: string } | null> {
+  const MAX_ATTEMPTS = 3;
   const system = locale === "zh" ? chatSystemPrompts.zh : chatSystemPrompts.en;
   const userMessage = buildRetryUserMessage(req, ctx, locale);
 
-  try {
-    const result = await generateText({
-      model: getChatModel(),
-      system,
-      prompt: userMessage,
-      maxOutputTokens: 1024,
-    });
-    const text = result.text ?? "";
-    const action = parseChatAction(text);
-    if (action.type !== "GENERATE") return null;
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await generateText({
+        model: getChatModel(),
+        system,
+        prompt: userMessage,
+        maxOutputTokens: 1024,
+      });
+      const text = result.text ?? "";
+      const action = parseChatAction(text);
 
-    const executed = new Set(ctx.executedKeys);
-    const fresh = action.strategies.filter((s) => !executed.has(s.key));
-    if (!fresh.length) return null;
+      if (action.type !== "GENERATE" || !action.strategies.length) {
+        console.warn(
+          `[requestRetryStrategies] attempt ${attempt + 1}/${MAX_ATTEMPTS}: no parseable strategies`,
+        );
+        continue;
+      }
 
-    return { strategies: fresh, assistantMessage: text };
-  } catch (err) {
-    console.error(
-      "[requestRetryStrategies]",
-      err instanceof Error ? err.message : err,
-    );
-    return null;
+      const executed = new Set(ctx.executedKeys);
+      const fresh = action.strategies.filter((s) => !executed.has(s.key));
+      if (!fresh.length) {
+        console.warn(
+          `[requestRetryStrategies] attempt ${attempt + 1}/${MAX_ATTEMPTS}: all strategies already executed`,
+        );
+        continue;
+      }
+
+      return { strategies: fresh, assistantMessage: text };
+    } catch (err) {
+      console.error(
+        `[requestRetryStrategies] attempt ${attempt + 1}/${MAX_ATTEMPTS}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
+
+  return null;
 }

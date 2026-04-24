@@ -12,7 +12,12 @@ import { ChatMarkdown } from "@/components/chat-markdown";
 import { UiTooltip } from "@/components/ui-tooltip";
 import { DomainQuestionnaire } from "@/components/domain-questionnaire";
 import { formatQuestionnaireUserMessage } from "@/lib/chat/format-questionnaire-message";
-import { parseChatAction, stripActionMarkers } from "@/lib/chat/parse-action";
+import {
+  parseChatAction,
+  parseRequirementsOverride,
+  snapBudgetAmount,
+  stripActionMarkers,
+} from "@/lib/chat/parse-action";
 import {
   GEN_PROGRESS_MESSAGE_ID_PREFIX,
   isGenProgressUiMessage,
@@ -31,6 +36,7 @@ import { isReadonlyProductScenario, type HomeScenarioValue } from "@/lib/home-sc
 import { TurnstileHost, type TurnstileHostHandle } from "@/components/turnstile-host";
 import {
   RateBudgetBadge,
+  RateLimitBanner,
   notifyRateRefresh,
 } from "@/components/rate-budget-badge";
 import { RegistrarButtonRow } from "@/components/registrar-button-row";
@@ -224,6 +230,7 @@ export function SearchExperience({
   );
 
   const [wizardReq, setWizardReq] = useState<DomainRequirements | null>(null);
+  const [mobileTab, setMobileTab] = useState<"chat" | "domains">("chat");
   const [submissionId, setSubmissionId] = useState(0);
   const [favoritesVersion, setFavoritesVersion] = useState(0);
   const [sortKey, setSortKey] = useState<SortKey>("score-desc");
@@ -239,12 +246,18 @@ export function SearchExperience({
   const historyDomainsRef = useRef<Set<string>>(new Set());
   /** 待执行策略队列（会话内持久化；与 chat 新返回策略按 key 去重合并） */
   const strategyQueueRef = useRef<ParsedStrategy[]>([]);
+  /** 初始策略解析失败时的静默重试计数（0 表示尚未重试） */
+  const strategyParseRetryRef = useRef(0);
 
   // Generation progress shown in chat bubble
   const [genPhase, setGenPhase] = useState<
     "idle" | "generating" | "checking" | "scoring" | "done"
   >("idle");
   const genPhaseIdRef = useRef<string>("");
+  /** 当前生成请求的 AbortController，用于后台冻结时主动中断 */
+  const genAbortRef = useRef<AbortController | null>(null);
+  /** 流最后一次收到数据的时间戳，看门狗用 */
+  const lastActivityRef = useRef<number>(0);
   /** 串行执行多次「生成」，避免并发时后一批以空列表为基准合并导致覆盖上一批 */
   const generateQueueRef = useRef(Promise.resolve());
 
@@ -360,6 +373,10 @@ export function SearchExperience({
         );
       };
 
+      const abortCtrl = new AbortController();
+      genAbortRef.current = abortCtrl;
+      lastActivityRef.current = Date.now();
+
       try {
         const curMessages = messagesRef.current as UIMessage[];
         const chatHistoryForAi = curMessages.filter((m) => !isGenProgressUiMessage(m));
@@ -383,7 +400,8 @@ export function SearchExperience({
                 role: m.role,
                 content: textFromParts(m),
               })),
-              turnstileToken,
+              // 不传 turnstileToken：compress 跳过 Turnstile 校验，
+              // 唯一 token 留给后续 /api/domains/generate 使用。
             }),
           }).catch(() => null);
           if (compressRes?.ok) {
@@ -428,6 +446,7 @@ export function SearchExperience({
 
         const res = await fetch("/api/domains/generate", {
           method: "POST",
+          signal: abortCtrl.signal,
           headers: {
             "Content-Type": "application/json",
             ...(fp ? { "X-NFM-Fingerprint": fp } : {}),
@@ -524,6 +543,7 @@ export function SearchExperience({
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
+            lastActivityRef.current = Date.now();
             buffer += decoder.decode(value, { stream: true });
             for (;;) {
               const i = buffer.indexOf("\n");
@@ -571,10 +591,17 @@ export function SearchExperience({
         } else {
           setGenError(null);
         }
-      } catch {
-        setGenError(t("errorRetry"));
+      } catch (err) {
+        if (err instanceof Error && err.name === "AbortError") {
+          // 用户切后台导致连接中断，提示重试
+          setGenError(t("genInterrupted"));
+        } else {
+          setGenError(t("errorRetry"));
+        }
         genPhaseIdRef.current = "";
         setGenPhase("idle");
+      } finally {
+        if (genAbortRef.current === abortCtrl) genAbortRef.current = null;
       }
     },
     [locale, t, injectAssistantBubble],
@@ -596,15 +623,74 @@ export function SearchExperience({
     transport,
     onFinish: ({ message }) => {
       const fullText = textFromParts(message as UIMessage);
+
+      // Apply [[SUFFIXES:...]] / [[BUDGET:...|...]] overrides immediately so
+      // that the subsequent doGenerate call already uses the updated params.
+      const override = parseRequirementsOverride(fullText);
+      if (wizardReqRef.current && (override.suffixes ?? override.budget)) {
+        const base = wizardReqRef.current;
+        const updated: DomainRequirements = {
+          ...base,
+          ...(override.suffixes ? { suffixes: override.suffixes } : {}),
+          ...(override.budget
+            ? {
+                maxFirstYearBudgetAmount: snapBudgetAmount(
+                  override.budget.amount,
+                  base.budgetCurrency,
+                ) as DomainRequirements["maxFirstYearBudgetAmount"],
+              }
+            : {}),
+        };
+        wizardReqRef.current = updated;
+        setWizardReq(updated);
+      }
+
       const action = parseChatAction(fullText);
 
       if (action.type === "GENERATE") {
         const req = wizardReqRef.current;
         if (!req) return;
         if (!action.strategies.length) {
-          injectAssistantBubble(generateId(), t("generateMissingStrategies"));
+          // 策略解析失败：静默向后端重试，最多 3 次
+          const MAX_PARSE_RETRIES = 3;
+          if (strategyParseRetryRef.current < MAX_PARSE_RETRIES) {
+            strategyParseRetryRef.current += 1;
+            const currentMessages = messagesRef.current;
+            void (async () => {
+              try {
+                const res = await fetch("/api/chat/request-strategies", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ messages: currentMessages, locale }),
+                });
+                if (res.ok) {
+                  const data = (await res.json()) as { strategies?: ParsedStrategy[] };
+                  if (data.strategies?.length) {
+                    strategyParseRetryRef.current = 0;
+                    strategyQueueRef.current = mergeParsedStrategies(
+                      strategyQueueRef.current,
+                      data.strategies,
+                    );
+                    void doGenerate(req);
+                    return;
+                  }
+                }
+              } catch {
+                // network error — fall through to show error on last attempt
+              }
+              // 最后一次重试也失败了，才告知用户
+              if (strategyParseRetryRef.current >= MAX_PARSE_RETRIES) {
+                strategyParseRetryRef.current = 0;
+                injectAssistantBubble(generateId(), t("generateMissingStrategies"));
+              }
+            })();
+          } else {
+            strategyParseRetryRef.current = 0;
+            injectAssistantBubble(generateId(), t("generateMissingStrategies"));
+          }
           return;
         }
+        strategyParseRetryRef.current = 0;
         strategyQueueRef.current = mergeParsedStrategies(
           strategyQueueRef.current,
           action.strategies,
@@ -723,6 +809,40 @@ export function SearchExperience({
     }, 500);
     return () => window.clearTimeout(handle);
   }, [wizardReq, messages, accumulated]);
+
+  // Hide footer on mobile when in chat phase
+  useEffect(() => {
+    if (wizardReq) {
+      document.body.setAttribute("data-chat-active", "");
+    } else {
+      document.body.removeAttribute("data-chat-active");
+    }
+    return () => {
+      document.body.removeAttribute("data-chat-active");
+    };
+  }, [wizardReq]);
+
+  // iOS Safari watchdog: when page becomes visible and stream has been silent
+  // for 5 s, abort the stuck connection and let the user retry.
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!genPhaseIdRef.current) return; // not generating
+
+      const whenVisible = Date.now();
+      const watchdog = setTimeout(() => {
+        if (!genPhaseIdRef.current) return; // finished on its own
+        if (lastActivityRef.current >= whenVisible) return; // got new data
+        // Stream appears stuck — abort
+        genAbortRef.current?.abort();
+      }, 5000);
+
+      return () => clearTimeout(watchdog);
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, []);
 
   // Strip markers from displayed messages
   const displayMessages = useMemo(
@@ -876,17 +996,62 @@ export function SearchExperience({
 
   return (
     <div
-      className={`mx-auto flex h-[calc(100dvh-4rem)] w-full min-h-0 flex-col overflow-hidden px-4 py-4 sm:px-6 sm:py-5 ${wizardReq ? "max-w-screen-2xl" : "max-w-3xl"}`}
+      className={`mx-auto flex w-full flex-col px-4 py-4 sm:px-6 sm:py-5 ${
+        wizardReq
+          ? // 对话阶段：填满 main 的剩余空间，内部列各自滚动
+            "max-w-screen-2xl flex-1 min-h-0 overflow-hidden"
+          : // 问卷阶段：随内容自然撑高，允许整页滚动
+            "max-w-3xl pb-8"
+      }`}
     >
       <TurnstileHost ref={turnstileRef} />
-      <div className="mb-3 shrink-0 flex items-center justify-between gap-3 sm:mb-4">
+      <div className="mb-3 shrink-0 flex items-center gap-2 sm:mb-4 sm:gap-3">
         <Link
           href="/"
-          className="min-w-0 shrink text-sm font-medium text-brand hover:underline"
+          className="shrink-0 text-sm font-medium text-brand hover:underline"
         >
           ← {t("back")}
         </Link>
-        <RateBudgetBadge />
+        {/* Mobile tab switcher — only shown in chat phase below lg breakpoint */}
+        {wizardReq ? (
+          <div className="flex flex-1 justify-center lg:hidden">
+            <div className="flex rounded-full bg-surface-hover p-0.5 text-sm">
+              <button
+                type="button"
+                onClick={() => setMobileTab("chat")}
+                className={`rounded-full px-3 py-1 font-medium transition-colors ${
+                  mobileTab === "chat"
+                    ? "bg-white text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {t("chatColumnTitle")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setMobileTab("domains")}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 font-medium transition-colors ${
+                  mobileTab === "domains"
+                    ? "bg-white text-foreground shadow-sm"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {t("domainsColumnTitle")}
+                {domainListCount > 0 && (
+                  <span className="rounded-full bg-brand/20 px-1.5 text-xs font-semibold text-brand leading-none py-0.5">
+                    {domainListCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
+        {/* 对话阶段手机端隐藏配额徽章，限流时由 RateLimitBanner 在 tab 下方提示 */}
+        <div className={wizardReq ? "hidden lg:block" : ""}>
+          <RateBudgetBadge />
+        </div>
       </div>
 
       {initialSessionId && restorePhase === "loading" ? (
@@ -923,6 +1088,7 @@ export function SearchExperience({
               });
               setSubmissionId((n) => n + 1);
               setWizardReq(req);
+              setMobileTab("chat");
               accumulatedRef.current = [];
               setAccumulated([]);
               executedStrategyKeysRef.current = new Set();
@@ -937,7 +1103,9 @@ export function SearchExperience({
           />
         </>
       ) : (
-        <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
+        <>
+          <RateLimitBanner />
+          <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
           {clearListOpen ? (
             <div
               className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
@@ -979,7 +1147,7 @@ export function SearchExperience({
           ) : null}
 
           {/* Chat column */}
-          <section className="flex min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm lg:min-h-0">
+          <section className={`min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "chat" ? "flex" : "hidden lg:flex"}`}>
             <h2 className="shrink-0 text-base font-semibold tracking-tight text-foreground">
               {t("chatColumnTitle")}
             </h2>
@@ -1091,7 +1259,7 @@ export function SearchExperience({
           </section>
 
           {/* Domains column */}
-          <section className="flex min-h-[280px] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm lg:min-h-0">
+          <section className={`min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "domains" ? "flex" : "hidden lg:flex"}`}>
             <div className="flex shrink-0 items-center justify-between gap-2">
               <h2 className="min-w-0 flex-1 text-base font-semibold tracking-tight text-foreground">
                 {t("domainsColumnTitle")}
@@ -1217,6 +1385,7 @@ export function SearchExperience({
             </ul>
           </section>
         </div>
+        </>
       )}
     </div>
   );

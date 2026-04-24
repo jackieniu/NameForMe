@@ -8,12 +8,14 @@ import type { RegistrarId } from "@/types/domain";
 
 type LinkLabelKey =
   | "registerLinkAliyun"
-  | "registerLinkPorkbun"
-  | "registerLinkNamecheap";
+  | "registerLinkNamecheap"
+  | "registerLinkGodaddy"
+  | "registerLinkCloudflare";
 type OpenTooltipKey =
   | "registerOpenAliyun"
-  | "registerOpenPorkbun"
-  | "registerOpenNamecheap";
+  | "registerOpenNamecheap"
+  | "registerOpenGodaddy"
+  | "registerOpenCloudflare";
 
 /**
  * 三家注册商：href、文案、tooltip、可选 SVG（顶栏收藏下拉用紧凑图标）。
@@ -37,14 +39,6 @@ export const REGISTRAR_CONFIG: Record<
     className:
       "bg-[#d95e00] text-white shadow-sm hover:bg-[#b84e00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d95e00]",
   },
-  porkbun: {
-    href: (d) => buildAffiliateUrl(d, "porkbun"),
-    labelKey: "registerLinkPorkbun",
-    tooltipKey: "registerOpenPorkbun",
-    iconSrc: "/porkbun.svg",
-    className:
-      "bg-[#f27777] text-white shadow-sm hover:bg-[#e06666] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f27777]",
-  },
   namecheap: {
     href: (d) => buildAffiliateUrl(d, "namecheap"),
     labelKey: "registerLinkNamecheap",
@@ -53,22 +47,50 @@ export const REGISTRAR_CONFIG: Record<
     className:
       "bg-[#ff8c44] text-white shadow-sm hover:bg-[#f07a30] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8c44]",
   },
+  godaddy: {
+    href: (d) => buildAffiliateUrl(d, "godaddy"),
+    labelKey: "registerLinkGodaddy",
+    tooltipKey: "registerOpenGodaddy",
+    iconSrc: "/godaddy.svg",
+    className:
+      "bg-[#1BDBAD] text-white shadow-sm hover:bg-[#17c49b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1BDBAD]",
+  },
+  cloudflare: {
+    href: (d) => buildAffiliateUrl(d, "cloudflare"),
+    labelKey: "registerLinkCloudflare",
+    tooltipKey: "registerOpenCloudflare",
+    iconSrc: "/cloudflare.svg",
+    className:
+      "bg-[#F48120] text-white shadow-sm hover:bg-[#e07010] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F48120]",
+  },
 };
 
 export const REGISTRAR_ORDER: readonly RegistrarId[] = [
   "aliyun",
-  "porkbun",
+  "cloudflare",
   "namecheap",
+  "godaddy",
 ];
 
-export function skipAliyunRegisterButton(
+/** TLD 列表：阿里云不出售，不显示阿里云注册按钮 */
+const ALIYUN_UNSUPPORTED_TLDS = new Set([".io", ".ai", ".org", ".co", ".app", ".dev"]);
+
+export function skipRegistrarButton(
   domain: string,
   registrar: RegistrarId,
 ): boolean {
   const d = domain.trim().toLowerCase();
-  if (d.endsWith(".ai")) return true;
-  if (registrar === "porkbun") return true;
+  const tld = d.includes(".") ? d.slice(d.indexOf(".")) : "";
+  if (registrar === "aliyun" && ALIYUN_UNSUPPORTED_TLDS.has(tld)) return true;
   return false;
+}
+
+/** @deprecated 使用 skipRegistrarButton */
+export function skipAliyunRegisterButton(
+  domain: string,
+  registrar: RegistrarId,
+): boolean {
+  return skipRegistrarButton(domain, registrar);
 }
 
 export type RegistrarPresentation = "text" | "icon";
@@ -153,9 +175,7 @@ export function RegistrarButtonRow({
   presentation?: RegistrarPresentation;
   className?: string;
 }) {
-  const visible = REGISTRAR_ORDER.filter(
-    (rid) => !(rid === "aliyun" && skipAliyunRegisterButton(domain, preferredRegistrar)),
-  );
+  const visible = REGISTRAR_ORDER.filter((rid) => !skipRegistrarButton(domain, rid));
   const gap =
     presentation === "icon"
       ? "gap-0.5"

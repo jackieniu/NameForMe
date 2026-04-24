@@ -64,7 +64,7 @@ Most AI domain generators share one frustrating pattern: **great-sounding names 
 | **Affiliate-ready links** | Alibaba Cloud / Porkbun / Namecheap with optional affiliate IDs |
 | **Favorites & history** | Stored in `localStorage`; no accounts |
 | **Bilingual routing** | Dedicated `zh/` and `en/` routes, SEO-friendly |
-| **Abuse protection** | IP limits, optional Cloudflare Turnstile, optional KV + D1 persistence |
+| **Abuse protection** | IP limits, optional Turnstile, optional Upstash Redis for rate limits |
 
 ---
 
@@ -76,7 +76,7 @@ Most AI domain generators share one frustrating pattern: **great-sounding names 
 - **i18n**: next-intl 4
 - **Validation**: Zod 4
 - **Testing**: Playwright
-- **Optional persistence**: Cloudflare KV + D1 (rate limits & blocklist)
+- **Optional persistence**: Upstash Redis (rate limits & blocklist)
 
 ---
 
@@ -141,10 +141,6 @@ LLM_MODEL=qwen2.5-14b-instruct
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjackieniu%2FNameForMe)
 
 Connect GitHub in the wizard to create a project from this repo and run the first deployment. **After deploy**, open **Settings → Environment Variables** and add everything required from [`.env.example`](./.env.example) (`LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`, registrar keys, etc.), then redeploy so the new values apply.
-
-### Cloudflare (Workers + OpenNext)
-
-Use **OpenNext for Cloudflare**: locally `npm run cf:build` / `npm run cf:deploy`. With Git-connected **Workers Builds**, set **Build** to **`npm run cf:build`** and **Deploy** to **`npx wrangler deploy`**. Bind KV/D1 as **`BLOCKLIST`** and **`DB`**; keep secrets in dashboard variables only. Full steps: **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**.
 
 ### Node (self-hosted)
 

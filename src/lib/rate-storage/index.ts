@@ -1,28 +1,30 @@
-import { tryCreateCloudflareStorage } from "./cloudflare";
 import { getMemoryStorage } from "./memory";
+import { UpstashRateStorage, hasUpstashRateLimitBindings } from "./upstash";
 import type { RateStorage } from "./types";
 
 export type { RateCounts, RateReadSnapshot, RateStorage } from "./types";
 export { secondsToNextDay, secondsToNextHour } from "./types";
-export { hasCloudflareRateLimitBindings } from "./cloudflare";
+export { hasUpstashRateLimitBindings } from "./upstash";
 
 /**
- * 选择当前请求应使用的存储后端。
- *
- * - Cloudflare Pages / Workers（检测到 BLOCKLIST + DB 绑定）：用 KV + D1。
- * - 其他（本地、Vercel 等）：回退到内存；**API 配额限流仅在命中 KV+D1 时启用**（见 `hasCloudflareRateLimitBindings`）。
- *
- * 每次调用都尝试拿 Cloudflare 绑定，命中后新建包装实例（底层仍指向同一 KV/D1）；未命中则返回进程内单例。
+ * 是否配置了 Upstash Redis（`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`）。
+ * 为 true 时 `api-protection` 会启用跨进程一致的 API 配额限流。
+ */
+export function hasPersistedRateStorage(): boolean {
+  return hasUpstashRateLimitBindings();
+}
+
+/**
+ * 选择当前请求应使用的存储后端：Upstash Redis → 否则进程内存。
  */
 export function getRateStorage(): RateStorage {
-  const cf = tryCreateCloudflareStorage();
-  if (cf) return cf;
+  if (hasUpstashRateLimitBindings()) return new UpstashRateStorage();
   return getMemoryStorage();
 }
 
 /**
- * 非计费接口专用：始终走内存，不消耗 KV / D1。
- * 用于 `/api/domains/check` 这类对我方没有外部费用的端点。
+ * 非计费接口专用：始终走内存，不消耗 Redis。
+ * 用于 `/api/domains/check` 等对我方没有外部 LLM/计费费用的端点。
  */
 export function getMemoryOnlyStorage(): RateStorage {
   return getMemoryStorage();

@@ -1,14 +1,11 @@
 /** 速率限制 / 黑名单后端存储抽象。
  *
- * 线上 Cloudflare Pages 用 `CloudflareRateStorage`（KV 黑名单 + D1 计数器），
- * 本地开发 / 未配置绑定时回退到 `MemoryRateStorage`。
+ * 生产环境可配置 `UpstashRateStorage`（Redis）；未配置时回退到 `MemoryRateStorage`。
  */
 
 export type RateCounts = {
   /** 当前小时全站累计调用数 */
   siteHour: number;
-  /** 当前 IP 本小时累计调用数 */
-  ipHour: number;
   /** 当前 IP 今日累计调用数 */
   ipDay: number;
 };
@@ -17,14 +14,12 @@ export type RateReadSnapshot = RateCounts & {
   blocked: boolean;
 };
 
+
 export interface RateStorage {
   /** 查询 IP 是否在黑名单中（TTL 期内即视为生效）。 */
   isBlocked(ip: string): Promise<boolean>;
 
-  /**
-   * 将 IP 加入黑名单，`ttlSec` 秒后自动过期。
-   * 若已存在则覆盖为更长 TTL（避免把日封变成时封）。
-   */
+  /** 将 IP 加入黑名单，`ttlSec` 秒后自动过期。 */
   blockIp(ip: string, ttlSec: number): Promise<void>;
 
   /**
@@ -54,7 +49,7 @@ export function dayKey(d: Date): string {
   return `${y}${m}${day}`;
 }
 
-/** 到下一个整点的秒数（至少 60，KV 最小 TTL）。 */
+/** 到下一个整点的秒数（至少 60）。 */
 export function secondsToNextHour(now: Date): number {
   const next = new Date(now);
   next.setUTCMinutes(0, 0, 0);

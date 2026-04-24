@@ -7,17 +7,11 @@ import { getOrCreateBrowserClientId } from "@/lib/browser-client-id";
 type RateStatusPayload = {
   remaining: number;
   blocked: boolean;
-  ipHourLeft: number;
   ipDayLeft: number;
   siteHourLeft: number;
 };
 
-/**
- * 当前会话剩余额度徽章：显示 min(IP 小时, IP 全天, 全站小时[, FP]) 余量。
- * 挂 `window` 级事件 `nfm:rate-refresh`，业务请求完成后可 dispatch 立即刷新。
- */
-export function RateBudgetBadge() {
-  const t = useTranslations("Search");
+function useRateStatus() {
   const [status, setStatus] = useState<RateStatusPayload | null>(null);
   const [failed, setFailed] = useState(false);
   const fpRef = useRef("");
@@ -59,6 +53,17 @@ export function RateBudgetBadge() {
     };
   }, [refresh]);
 
+  return { status, failed };
+}
+
+/**
+ * 当前会话剩余额度徽章：显示 min(IP 全天, 全站小时) 余量。
+ * 挂 `window` 级事件 `nfm:rate-refresh`，业务请求完成后可 dispatch 立即刷新。
+ */
+export function RateBudgetBadge() {
+  const t = useTranslations("Search");
+  const { status, failed } = useRateStatus();
+
   if (failed && !status) return null;
 
   const remaining = status?.remaining ?? null;
@@ -78,7 +83,6 @@ export function RateBudgetBadge() {
 
   const title = status
     ? t("rateDetail", {
-        ipHour: status.ipHourLeft,
         ipDay: status.ipDayLeft,
         siteHour: status.siteHourLeft,
       })
@@ -100,4 +104,42 @@ export function RateBudgetBadge() {
 export function notifyRateRefresh() {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event("nfm:rate-refresh"));
+}
+
+/**
+ * 当配额耗尽时，在对话框上方显示友好提示横幅。
+ * remaining === 0 时根据具体原因显示不同文案。
+ */
+export function RateLimitBanner() {
+  const t = useTranslations("Search");
+  const { status } = useRateStatus();
+
+  if (!status || status.remaining > 0) return null;
+
+  let message: string;
+  if (status.blocked) {
+    message = t("rateBannerBlocked");
+  } else if (status.siteHourLeft === 0) {
+    message = t("rateBannerSiteHour");
+  } else {
+    message = t("rateBannerIpDay");
+  }
+
+  return (
+    <div className="mb-3 shrink-0 flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900">
+      <svg
+        className="h-4 w-4 shrink-0 text-amber-500"
+        viewBox="0 0 20 20"
+        fill="currentColor"
+        aria-hidden
+      >
+        <path
+          fillRule="evenodd"
+          d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+          clipRule="evenodd"
+        />
+      </svg>
+      <span>{message}</span>
+    </div>
+  );
 }

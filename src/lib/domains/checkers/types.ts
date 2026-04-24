@@ -1,6 +1,6 @@
 import type { DomainMarket, RegistrarId } from "@/types/domain";
 
-export type CheckSource = "namecheap" | "aliyun";
+export type CheckSource = "namecheap" | "aliyun" | "godaddy" | "cloudflare";
 
 export type DomainCheckDetail = {
   domain: string;

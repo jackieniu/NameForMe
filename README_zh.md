@@ -49,7 +49,7 @@ NameForMe 首页
 | 🔗 **Affiliate 跳转** | 阿里云 / Porkbun / Namecheap 三选一，带推广参数                          |
 | ⭐ **收藏与历史**         | `localStorage` 本地存储，无需账号                                     |
 | 🌐 **中英双语**         | `zh/` 与 `en/` 独立路由，SEO 友好                                    |
-| 🛡️ **防刷与熔断**       | IP 限流 + 可选 Cloudflare Turnstile + KV/D1 持久化                  |
+| 🛡️ **防刷与熔断**       | IP 限流 + 可选 Turnstile + 可选 Upstash Redis 持久化                  |
 
 
 ---
@@ -62,7 +62,7 @@ NameForMe 首页
 - **国际化**：next-intl 4
 - **数据校验**：Zod 4
 - **测试**：Playwright
-- **可选持久化**：Cloudflare KV + D1（限流与黑名单）
+- **可选持久化**：Upstash Redis（限流与黑名单）
 
 ---
 
@@ -127,10 +127,6 @@ LLM_MODEL=qwen2.5-14b-instruct
 [Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjackieniu%2FNameForMe)
 
 点击按钮后按向导连接 GitHub，即可在 Vercel 从本仓库创建项目并完成首次部署。**部署完成后**，在 Vercel → Project → **Settings → Environment Variables** 中按 `[.env.example](./.env.example)` 填写 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 及域名检测等变量，然后重新部署一次使配置生效。
-
-### Cloudflare（Workers + OpenNext）
-
-使用 **OpenNext for Cloudflare**：本地 `npm run cf:build` / `npm run cf:deploy`；Git 连接时在控制台 **Build** 填 **`npm run cf:build`**、**Deploy** 填 **`npx wrangler deploy`**。KV / D1 绑定名 **`BLOCKLIST`**、**`DB`**；密钥只放在控制台变量，勿提交。说明见 **[`docs/cloudflare-deploy.md`](./docs/cloudflare-deploy.md)**。
 
 ### Node 自托管
 

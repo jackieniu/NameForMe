@@ -96,6 +96,7 @@
     "inputPlaceholder": "输入消息…",
     "startGenerate": "开始生成",
     "errorRetry": "出错了，请重试。",
+    "genInterrupted": "检测被中断（页面切到后台），请重新发起生成。",
     "httpRateLimit": "请求过于频繁，请 {sec} 秒后再试。",
     "httpSiteBusy": "当前访问量较大，请稍后再试。",
     "httpAccessDenied": "人机验证未通过或访问受限，请刷新页面后重试。",
@@ -103,7 +104,10 @@
     "rateRemaining": "剩余可用 {n} 次",
     "rateLoading": "配额加载中…",
     "rateBlocked": "访问受限",
-    "rateDetail": "个人本小时剩 {ipHour}、全天剩 {ipDay}、全站本小时剩 {siteHour}",
+    "rateDetail": "个人今日剩 {ipDay}、全站本小时剩 {siteHour}",
+    "rateBannerSiteHour": "全站本小时配额已用完，请下个小时再来使用。",
+    "rateBannerIpDay": "您今日的个人配额已用完，请明天（UTC 0 点）后再来使用。",
+    "rateBannerBlocked": "您的访问已被临时限制，请稍后再试。",
     "generating": "生成中…",
     "genStarting": "域名生成中。",
     "genExpandHint": "已展开候选，正在检测可用性…",
@@ -151,8 +155,10 @@
     "copyDomainsTooltip": "复制全部域名",
     "clearListTooltip": "清空域名列表",
     "registerOpenAliyun": "阿里云注册",
-    "registerOpenPorkbun": "Porkbun 注册",
+
     "registerOpenNamecheap": "Namecheap 注册",
+    "registerOpenGodaddy": "GoDaddy 注册",
+    "registerOpenCloudflare": "Cloudflare 注册",
     "favoriteFromListTooltip": "收藏",
     "removeFromListTooltip": "移除",
     "filterEmpty": "当前筛选下没有域名，可调整筛选条件。",
@@ -163,8 +169,10 @@
     "priceLineUsdEn": "{price} USD first year · renew {renewal} USD/yr{tierNote}",
     "priceLineUnknown": "暂无参考价（以注册商页面为准）",
     "registerLinkAliyun": "阿里云",
-    "registerLinkPorkbun": "Porkbun",
-    "registerLinkNamecheap": "Namecheap"
+
+    "registerLinkNamecheap": "Namecheap",
+    "registerLinkGodaddy": "GoDaddy",
+    "registerLinkCloudflare": "Cloudflare"
   },
   "Wizard": {
     "description": "项目描述",

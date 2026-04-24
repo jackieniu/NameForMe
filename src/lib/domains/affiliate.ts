@@ -10,8 +10,11 @@ export function buildAffiliateUrl(
     const base = `https://www.namecheap.com/domains/registration/results/?domain=${d}`;
     return aff ? `${base}&aff=${encodeURIComponent(aff)}` : base;
   }
-  if (registrar === "porkbun") {
-    return `https://porkbun.com/checkout/search?q=${d}`;
+  if (registrar === "godaddy") {
+    return `https://www.godaddy.com/domainsearch/find?domainToCheck=${d}`;
+  }
+  if (registrar === "cloudflare") {
+    return `https://www.cloudflare.com/products/registrar/`;
   }
   const track = process.env.ALIYUN_DOMAIN_TRACK_ID;
   const base = `https://wanwang.aliyun.com/domain/searchresult/?domain=${d}`;

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { createElement } from "react";
 import { Inter } from "next/font/google";
 import { notFound } from "next/navigation";
 import { NextIntlClientProvider } from "next-intl";
@@ -61,6 +62,12 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} suppressHydrationWarning>
+      <head>
+        {createElement("meta", {
+          name: "impact-site-verification",
+          value: "3e97dc77-1eb1-46a9-b336-4aca310f6830",
+        } as React.MetaHTMLAttributes<HTMLMetaElement> & { value: string })}
+      </head>
       <body
         className={`${inter.variable} min-h-dvh bg-background font-sans text-foreground antialiased`}
         style={{
@@ -71,7 +78,7 @@ export default async function LocaleLayout({
         <NextIntlClientProvider messages={messages}>
           <div className="flex min-h-dvh flex-col">
             <SiteHeader />
-            <main className="flex min-h-0 flex-1 flex-col pt-0">{children}</main>
+            <main className="flex flex-1 flex-col pt-0">{children}</main>
             <SiteFooter />
           </div>
         </NextIntlClientProvider>

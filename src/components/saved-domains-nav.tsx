@@ -48,9 +48,10 @@ export function SavedDomainsNav() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:px-3"
+        className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-muted transition-colors hover:bg-surface-hover hover:text-foreground sm:px-2.5"
         aria-expanded={open}
         aria-haspopup="dialog"
+        aria-label={`${tNav("savedDomains")} (${count})`}
       >
         <svg
           width="16"
@@ -62,17 +63,16 @@ export function SavedDomainsNav() {
           strokeLinecap="round"
           strokeLinejoin="round"
           aria-hidden
+          className="hidden md:block shrink-0"
         >
           <path d="M8 2.5l1.76 3.57 3.94.57-2.85 2.78.67 3.93L8 11.9l-3.52 1.85.67-3.93-2.85-2.78 3.94-.57L8 2.5z" />
         </svg>
-        <span>
-          {tNav("savedDomains")} ({count})
-        </span>
+        <span>{tNav("savedDomains")} ({count})</span>
       </button>
 
       {open ? (
         <div
-          className="absolute right-0 top-full z-[60] mt-2 w-[min(100vw-2rem,22rem)] rounded-xl border border-black/[0.08] bg-white py-2 shadow-lg"
+          className="fixed left-4 right-4 top-[4.5rem] z-[60] rounded-xl border border-black/[0.08] bg-white py-2 shadow-lg sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[min(100vw-2rem,22rem)]"
           role="dialog"
           aria-label={tNav("savedDomains")}
         >

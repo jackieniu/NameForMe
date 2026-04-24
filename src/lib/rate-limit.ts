@@ -2,30 +2,25 @@
  * 接口级限流 + 黑名单。
  *
  * 存储由 `rate-storage` 抽象：
- * - 已绑定 Cloudflare KV + D1：`tryConsumeApiSlot` 用 D1 原子计数 + KV 黑名单，跨实例一致。
- * - 无绑定（本地、Vercel 等）：**不调用** `tryConsumeApiSlot`（见 `api-protection`），无「伪全局限流」。
+ * - 已配置 Upstash Redis：原子计数 + 黑名单，多实例一致。
+ * - 未配置：不调用 `tryConsumeApiSlot`（见 `api-protection`），无全局限流。
  *
- * 流程（仅绑定 KV+D1 且 `tryConsumeApiSlot` 被调用时）：
- * 1. 查黑名单（KV 快路径，命中即拒）。
- * 2. `incrementCounters` 原子 +1 三个计数器（site_h / ip_h / ip_d）并拿到新值。
- * 3. 若任一计数器 > 阈值 -> 拒绝。被拒请求也占配额，防止攻击者卡阈值边缘。
- * 4. 若计数器 ≥ 阈值 -> 主动写 KV 黑名单（下次直接快路径拒绝，省 D1 一次 batch）。
+ * 流程（持久化存储可用且 `tryConsumeApiSlot` 被调用时）：
+ * 1. 查黑名单；2. 全站/按 IP 日计数 +1 并获新值；3. 超阈值则拒绝并拉黑。
  *
- * Turnstile 失败频次仍保留在内存中（轻量、每次失败都已打过 CF siteverify，
- * 攻击成本已经足够高，跨 isolate 不一致带来的「多个 isolate 各容忍 5 次」可接受）。
+ * Turnstile 失败次数记在进程内存（见 `noteTurnstileFailure`）。
  */
 
 import {
   getRateStorage,
-  hasCloudflareRateLimitBindings,
+  hasPersistedRateStorage,
   secondsToNextDay,
   secondsToNextHour,
 } from "./rate-storage";
 import type { RateStorage } from "./rate-storage";
 
-/** 单 IP：每小时、每天 */
-export const API_RATE_IP_PER_HOUR = 100;
-export const API_RATE_IP_PER_DAY = 500;
+/** 单 IP 每天（无每小时限制） */
+export const API_RATE_IP_PER_DAY = 100;
 /** 全站每小时 */
 export const API_RATE_SITE_PER_HOUR = 1000;
 
@@ -63,7 +58,7 @@ export function isIpBlocked(ip: string, storage: RateStorage = getRateStorage())
 
 /**
  * Turnstile 等低成本校验连续失败时拉黑（短期）。
- * 10 分钟窗口内失败 5 次 -> 拉黑 1 小时（写入 KV / 内存）。
+ * 10 分钟窗口内失败 5 次 -> 拉黑 1 小时（写入 Redis 或内存）。
  */
 export async function noteTurnstileFailure(
   ip: string,
@@ -84,7 +79,6 @@ export async function noteTurnstileFailure(
 export type ApiGateFailureKind =
   | "blocked"
   | "site_degraded"
-  | "rate_ip_hour"
   | "rate_ip_day";
 
 export type ApiGateResult =
@@ -92,7 +86,7 @@ export type ApiGateResult =
   | { ok: false; kind: ApiGateFailureKind; retryAfterSec?: number };
 
 /**
- * 通过校验后调用一次：原子 +1 三个计数器并判定是否超限。
+ * 通过校验后调用一次：全站/按 IP 日计数 +1 并判定是否超限。
  *
  * 被拒的那一次「也计入」配额，这是有意设计：
  *   - 攻击者若狂刷，每一次都会增加计数，更快触发封禁；
@@ -111,7 +105,7 @@ export async function tryConsumeApiSlot(
   try {
     counts = await storage.incrementCounters(ip, now);
   } catch (err) {
-    // 后端（D1）不可用：fail-closed。防刷是本模块的首要目标，
+    // 限流存储（Redis 等）不可用：fail-closed。防刷是本模块的首要目标，
     // 为了 UX 放行反而会让攻击者绕过，宁可短暂 503 也不要放水。
     console.error("[rate-limit] storage failed, closing gate", err);
     return {
@@ -121,7 +115,7 @@ export async function tryConsumeApiSlot(
     };
   }
 
-  const { siteHour, ipHour, ipDay } = counts;
+  const { siteHour, ipDay } = counts;
 
   if (siteHour > API_RATE_SITE_PER_HOUR) {
     return {
@@ -131,7 +125,6 @@ export async function tryConsumeApiSlot(
     };
   }
 
-  // 先判 day（TTL 更长）再判 hour；同时超时确保封到当日结束，避免 1 小时后解封。
   if (ipDay > API_RATE_IP_PER_DAY) {
     await storage.blockIp(ip, secondsToNextDay(now));
     return {
@@ -140,36 +133,23 @@ export async function tryConsumeApiSlot(
       retryAfterSec: secondsToNextDay(now),
     };
   }
-  if (ipHour > API_RATE_IP_PER_HOUR) {
-    await storage.blockIp(ip, secondsToNextHour(now));
-    return {
-      ok: false,
-      kind: "rate_ip_hour",
-      retryAfterSec: secondsToNextHour(now),
-    };
-  }
 
-  // 命中阈值（未超）：主动写黑名单，下一次请求直接走 KV 快路径拒绝。
+  // 命中阈值（未超）：主动写黑名单，下次请求先被 isBlocked 拒绝。
   if (ipDay === API_RATE_IP_PER_DAY) {
     await storage.blockIp(ip, secondsToNextDay(now));
-  } else if (ipHour === API_RATE_IP_PER_HOUR) {
-    await storage.blockIp(ip, secondsToNextHour(now));
   }
 
   return { ok: true };
 }
 
 export type RateStatus = {
-  ipHourUsed: number;
-  ipHourLimit: number;
-  ipHourLeft: number;
   ipDayUsed: number;
   ipDayLimit: number;
   ipDayLeft: number;
   siteHourUsed: number;
   siteHourLimit: number;
   siteHourLeft: number;
-  /** min(ipHourLeft, ipDayLeft, siteHourLeft)；0 表示当前不可用 */
+  /** min(ipDayLeft, siteHourLeft)；0 表示当前不可用 */
   remaining: number;
   blocked: boolean;
 };
@@ -179,17 +159,10 @@ export async function getRateStatus(
   ip: string,
   storage: RateStorage = getRateStorage(),
 ): Promise<RateStatus> {
-  if (!hasCloudflareRateLimitBindings()) {
+  if (!hasPersistedRateStorage()) {
     const blocked = await storage.isBlocked(ip);
-    const cap = Math.min(
-      API_RATE_IP_PER_HOUR,
-      API_RATE_IP_PER_DAY,
-      API_RATE_SITE_PER_HOUR,
-    );
+    const cap = Math.min(API_RATE_IP_PER_DAY, API_RATE_SITE_PER_HOUR);
     return {
-      ipHourUsed: 0,
-      ipHourLimit: API_RATE_IP_PER_HOUR,
-      ipHourLeft: API_RATE_IP_PER_HOUR,
       ipDayUsed: 0,
       ipDayLimit: API_RATE_IP_PER_DAY,
       ipDayLeft: API_RATE_IP_PER_DAY,
@@ -204,16 +177,12 @@ export async function getRateStatus(
   const now = new Date();
   const snap = await storage.readStatus(ip, now);
 
-  const ipHourLeft = Math.max(0, API_RATE_IP_PER_HOUR - snap.ipHour);
   const ipDayLeft = Math.max(0, API_RATE_IP_PER_DAY - snap.ipDay);
   const siteHourLeft = Math.max(0, API_RATE_SITE_PER_HOUR - snap.siteHour);
 
-  const remaining = snap.blocked ? 0 : Math.min(ipHourLeft, ipDayLeft, siteHourLeft);
+  const remaining = snap.blocked ? 0 : Math.min(ipDayLeft, siteHourLeft);
 
   return {
-    ipHourUsed: snap.ipHour,
-    ipHourLimit: API_RATE_IP_PER_HOUR,
-    ipHourLeft,
     ipDayUsed: snap.ipDay,
     ipDayLimit: API_RATE_IP_PER_DAY,
     ipDayLeft,

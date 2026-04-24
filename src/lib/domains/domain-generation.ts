@@ -10,6 +10,7 @@ import {
   parseWordComboParams,
 } from "@/lib/domains/candidate-generator";
 import { checkDomainsRealtime } from "@/lib/domains/checkers/orchestrator";
+import { runWithFetchBudget } from "@/lib/domains/fetch-budget";
 import type {
   DomainAvailabilityStatus,
   DomainGenerateResponse,
@@ -102,8 +103,12 @@ const MAX_CHECK_PER_BATCH = 220;
 // ---------- word_combo 新管线 & 前缀扩容 的编排常量 ----------
 /** word_combo「攒够即停」的目标：可注册且预算内条数 */
 const WORD_COMBO_TARGET_AVAILABLE = 80;
-/** 单次 generate 对阿里云的总检测硬上限（跨策略累计） */
-const GLOBAL_CHECK_LIMIT = 600;
+/**
+ * 单次 generate 总检测硬上限（跨策略累计）。
+ * CF Registrar 批量检测每 20 个域名仅消耗 1 个 subrequest，500 个域名 = 25 次 subrequest，
+ * 配额消耗极低，无需人为压缩检测量。Aliyun 补价配额由 SubrequestBudget 自然控制。
+ */
+const GLOBAL_CHECK_LIMIT = 500;
 /** 单次 generate 的墙钟时间上限，超时停止发新检测 */
 const GENERATE_WALLCLOCK_MS = 90_000;
 /** word_combo 单个 word 空转保护：检测 ≥ 60 条且新增可注册 < 2 时跳词 */
@@ -111,7 +116,7 @@ const WORDCOMBO_STALL_MIN_CHECKED = 60;
 const WORDCOMBO_STALL_MIN_NEW = 2;
 /** 前缀扩容触发阈值：主阶段结束后可注册且预算内数 < 此值才扩容 */
 const PREFIX_EXPAND_TRIGGER = 10;
-/** word_combo 检测时每批送检的 FQDN 数 */
+/** word_combo 检测时每批送检的 FQDN 数（每批 2 次 CF Registrar 调用，检测粒度适中）*/
 const WORDCOMBO_BATCH_SIZE = 40;
 
 const MIN_RESULTS_BEFORE_FALLBACK = 5;
@@ -219,6 +224,25 @@ export interface GenerationOptions {
 }
 
 export async function runDomainGeneration(
+  req: DomainRequirements,
+  options: GenerationOptions,
+): Promise<
+  DomainGenerateResponse & {
+    executedKeys: string[];
+    fallbackRoundsUsed: number;
+    totalChecked: number;
+    totalTaken: number;
+    totalOverBudget: number;
+    advisoryMessage?: string;
+  }
+> {
+  return runWithFetchBudget(() => _runDomainGenerationImpl(req, options));
+}
+
+/**
+ * 内部実装。runDomainGeneration の fetch 予算コンテキスト内で実行される。
+ */
+async function _runDomainGenerationImpl(
   req: DomainRequirements,
   options: GenerationOptions,
 ): Promise<
@@ -408,6 +432,8 @@ export async function runDomainGeneration(
 
     const checks = await checkDomainsRealtime(checkTargets, batchReq.market, {
       signal: options.abortSignal,
+      locale,
+
       onCheckProgress: async ({ done, total, host }) => {
         if (done !== 1 && done !== total && done % 12 !== 0) return;
         await emit({ phase: "check_progress", done, total, host });
@@ -542,6 +568,8 @@ export async function runDomainGeneration(
 
         const checks = await checkDomainsRealtime(slice, req.market, {
           signal: options.abortSignal,
+          locale,
+
           onCheckProgress: async ({ done, total, host }) => {
             if (done !== 1 && done !== total && done % 12 !== 0) return;
             await emit({ phase: "check_progress", done, total, host });
@@ -658,6 +686,8 @@ export async function runDomainGeneration(
 
       const checks = await checkDomainsRealtime(slice, req.market, {
         signal: options.abortSignal,
+        locale,
+
         onCheckProgress: async ({ done, total, host }) => {
           if (done !== 1 && done !== total && done % 12 !== 0) return;
           await emit({ phase: "check_progress", done, total, host });
@@ -774,6 +804,8 @@ export async function runDomainGeneration(
 
       const checks = await checkDomainsRealtime(slice, req.market, {
         signal: options.abortSignal,
+        locale,
+
         onCheckProgress: async ({ done, total, host }) => {
           if (done !== 1 && done !== total && done % 12 !== 0) return;
           await emit({ phase: "check_progress", done, total, host });

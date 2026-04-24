@@ -8,16 +8,12 @@
     "start": "next start",
     "lint": "next lint",
     "test:e2e": "playwright test",
-    "cf:login": "wrangler login",
-    "cf:build": "opennextjs-cloudflare build",
-    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
-    "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "lock:sync": "npm install --package-lock-only"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.52",
     "@ai-sdk/react": "^3.0.161",
+    "@upstash/redis": "^1.37.0",
     "ai": "^6.0.159",
     "fast-xml-parser": "^5.6.0",
     "lucide-react": "^1.8.0",
@@ -33,7 +29,6 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
-    "@opennextjs/cloudflare": "^1.19.3",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
@@ -42,7 +37,6 @@
     "eslint": "^9",
     "eslint-config-next": "15.5.15",
     "tailwindcss": "^4",
-    "typescript": "^5",
-    "wrangler": "^4.84.0"
+    "typescript": "^5"
   }
 }
