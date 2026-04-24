@@ -1,0 +1,10 @@
+# Render Blueprint：连接本 Git 仓库后可用 New → Blueprint 导入。
+# 手动建 Web Service 时也可对照以下 Build/Start。说明：https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: nameforme
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
