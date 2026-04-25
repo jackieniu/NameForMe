@@ -3,10 +3,9 @@ import {
   cloudflareRegistrarCheckBatch,
   cloudflareRegistrarConfigured,
 } from "@/lib/domains/checkers/cloudflare-registrar";
-import { namecheapCheckBatch, namecheapConfigured } from "@/lib/domains/checkers/namecheap";
 import type { DomainCheckDetail } from "@/lib/domains/checkers/types";
+import { logDomainCheckRoute } from "@/lib/ai-logger";
 import type { DomainMarket } from "@/types/domain";
-import { fetchBudgetHasRoom } from "@/lib/domains/fetch-budget";
 
 export type CheckDomainsProgress = { done: number; total: number; host: string };
 
@@ -25,23 +24,6 @@ function getTld(domain: string): string {
  * 阿里云 CNY 补价阶段：顺序执行，不并发，彻底避免限流。
  */
 const ALIYUN_CONCURRENCY = 1;
-
-/**
- * @deprecated 已由全局 fetch 追踪器（fetch-budget.ts）替代。
- * 保留此类仅为向后兼容。
- */
-export class SubrequestBudget {
-  hasRoom(_n = 1): boolean {
-    return fetchBudgetHasRoom(_n);
-  }
-  spend(): void {
-    // 追踪由 globalThis.fetch 钩子自动完成，此处无需手动计数
-  }
-  get remaining(): number {
-    const s = (globalThis as Record<string, unknown>)._fetchBudgetSpent;
-    return typeof s === "number" ? Math.max(0, 900 - s) : 9999;
-  }
-}
 
 async function runWithConcurrency<T, R>(
   items: readonly T[],
@@ -70,14 +52,14 @@ async function runWithConcurrency<T, R>(
  *
  * 检测策略（两阶段）：
  *
- * Phase 1 — Cloudflare Registrar 批量检测（业务 API，非本站托管平台）
- *   单次最多 20 个 FQDN，返回可用性 + at-cost USD 注册价；大批量时轮数远少于逐域名请求。
+ * Phase 1 — Cloudflare Registrar 批量（不含 `.cn`；单次 POST 最多 20 个 FQDN）
  *
- * Phase 2 — 阿里云 CNY 价格补全（仅中文模式 + 阿里云已配置）
- *   对 Phase 1 可用且 TLD 受支持的域名补人民币价格等。
+ * Phase 1b — `.cn` + CF 失败项（无返回 / extension_not_supported）统一走阿里云 CheckDomain；
+ *   TLD 属于 `ALIYUN_UNSUPPORTED_TLDS` 的不送阿里云。
  *
- * 降级：仅阿里云 / 仅 Namecheap 等见代码分支。
- * `fetch-budget` 限制出站 fetch 总次数，避免与 AI 打分等争用。
+ * Phase 2 — 阿里云 CNY 补价（仅中文 + 已配阿里云）对 CF 已可用且仍缺万网 CNY 的域名。
+ *
+ * 降级：仅配阿里云时，全程对 uniq 中域名逐域 CheckDomain，无 Cloudflare 批量阶段。
  */
 export async function checkDomainsRealtime(
   domains: string[],
@@ -87,11 +69,8 @@ export async function checkDomainsRealtime(
     signal?: AbortSignal;
     /** 当前语言："zh" → Phase 2 补阿里云 CNY 价格，其他 → 仅保留 GoDaddy USD 价格 */
     locale?: string;
-    /**
-     * @deprecated 已由全局 fetch 追踪器自动处理，传入值被忽略。
-     * 保留此参数仅为向后兼容，避免修改所有调用方。
-     */
-    budget?: SubrequestBudget;
+    /** 与 `ai-interactions.jsonl` 中 `type: domain_check_route` / `generate_stream` 关联 */
+    checkLogContext?: { sessionId?: string };
   },
 ): Promise<Map<string, DomainCheckDetail>> {
   void market;
@@ -99,89 +78,197 @@ export async function checkDomainsRealtime(
   const uniq = [...new Set(domains.map((d) => d.trim().toLowerCase()).filter(Boolean))];
   if (!uniq.length) return map;
 
-  const nc = namecheapConfigured();
   const ali = aliyunConfigured();
   const cf = cloudflareRegistrarConfigured();
+  const logSid = opts?.checkLogContext?.sessionId;
 
-  if (!ali && !nc && !cf) {
+  if (!ali && !cf) {
     throw new Error(
-      "未配置域名检测：请设置 CF_REGISTRAR_TOKEN 与 CF_ACCOUNT_ID（Cloudflare），" +
-        "或 ALIYUN_ACCESS_KEY_ID 与 ALIYUN_ACCESS_KEY_SECRET（阿里云），或配置 Namecheap API。",
+      "未配置域名检测：请设置 CF_REGISTRAR_TOKEN 与 CF_ACCOUNT_ID（Cloudflare Registrar），" +
+        "或 ALIYUN_ACCESS_KEY_ID 与 ALIYUN_ACCESS_KEY_SECRET（阿里云）。",
     );
   }
 
-  let done = 0;
+  let cfPhaseDone = 0;
 
-  const notifyProgress = async (host: string) => {
-    done += 1;
-    await opts?.onCheckProgress?.({ done, total: uniq.length, host });
+  const notifyCfProgress = async (host: string, cfTotal: number) => {
+    cfPhaseDone += 1;
+    await opts?.onCheckProgress?.({
+      done: cfPhaseDone,
+      total: Math.max(cfTotal, 1),
+      host,
+    });
   };
 
   // ════════════════════════════════════════════════════════════════════════════
   // 主路径：Cloudflare Registrar API 可用时
-  //   Phase 1：全量批量检测（20 域名/次，at-cost USD 定价）
-  //   Phase 2：中文模式对可用域名补阿里云 CNY 价格
-  //
-  // subrequest 追踪由 fetch-budget.ts 的全局钩子自动完成，无需手动计数。
-  // fetchBudgetHasRoom() 直接读取实际已发起的 fetch 次数，判断是否继续。
+  //   Phase 1：批量检测（排除 .cn）
+  //   Phase 1b：.cn + CF 失败项 → 阿里云（跳过阿里云不支持的 TLD）
+  //   Phase 2：中文下 CF 可用域名的万网 CNY 补价
   // ════════════════════════════════════════════════════════════════════════════
   if (cf) {
-    // ── Phase 1：Cloudflare 批量检测所有域名 ──────────────────────────────────
-    const batchCount = Math.ceil(uniq.length / 20);
-    if (fetchBudgetHasRoom(batchCount)) {
-      const cfResults = await cloudflareRegistrarCheckBatch(uniq);
-      for (const [d, detail] of cfResults) {
-        map.set(d, detail);
-        await notifyProgress(d);
+    const forCf = uniq.filter((d) => getTld(d) !== ".cn");
+    const cnOnly = uniq.filter((d) => getTld(d) === ".cn");
+
+    const batchCount = Math.ceil(forCf.length / 20) || 0;
+    logDomainCheckRoute({
+      sessionId: logSid,
+      step: "cf_phase1",
+      uniqueFqdnCount: forCf.length,
+      summary:
+        "Cloudflare Registrar 批量：不含 .cn；单次 POST 最多 20 个 FQDN；.cn 与 CF 无返回/extension_not_supported 的域名随后走阿里云（阿里云不支持的 TLD 除外）。",
+      cloudflare: {
+        mode: "batch",
+        maxDomainsPerRequest: 20,
+        method: "POST",
+        baseUrl: "https://api.cloudflare.com/client/v4",
+        pathPattern: "/accounts/{accountId}/registrar/domain-check",
+        httpBatchRequestCount: batchCount,
+      },
+    });
+
+    const cfReturned =
+      forCf.length > 0 ? await cloudflareRegistrarCheckBatch(forCf) : new Map<string, DomainCheckDetail>();
+
+    for (const d of forCf) {
+      if (cfReturned.has(d)) {
+        map.set(d, cfReturned.get(d)!);
+      } else {
+        map.set(d, {
+          domain: d,
+          available: false,
+          isPremium: false,
+          price: 0,
+          renewalPrice: 0,
+          currency: "USD",
+          source: "cloudflare",
+          registrar: "cloudflare",
+          cfBatchMiss: true,
+        });
       }
-      // Cloudflare 未返回的域名（不支持的 TLD 等）补充为不可用
-      for (const d of uniq) {
-        if (!map.has(d)) {
-          map.set(d, {
-            domain: d,
-            available: false,
-            isPremium: false,
-            price: 0,
-            renewalPrice: 0,
-            currency: "USD",
-            source: "cloudflare",
-            registrar: "cloudflare",
-          });
-          await notifyProgress(d);
-        }
+      await notifyCfProgress(d, forCf.length);
+    }
+
+    if (!ali && cnOnly.length > 0) {
+      for (const d of cnOnly) {
+        map.set(d, {
+          domain: d,
+          available: false,
+          isPremium: false,
+          price: 0,
+          renewalPrice: 0,
+          currency: "USD",
+          source: "cloudflare",
+          registrar: "cloudflare",
+        });
       }
     }
 
-    // ── Phase 2：阿里云 CNY 补价（仅中文模式，仅可用 + 阿里云支持 TLD）────────
-    // 每个域名最多 2 次 HTTP 请求（无重试）。
-    // fetchBudgetHasRoom(1) 在每次请求前检查全局 fetch 计数，自然限制总量。
-    if (ali && opts?.locale === "zh") {
-      const toEnrich = [...map.entries()]
-        .filter(([d, detail]) => detail.available && !ALIYUN_UNSUPPORTED_TLDS.has(getTld(d)))
-        .map(([d]) => d);
+    const phase1Total = forCf.length;
+    const currencyPostCf = opts?.locale === "zh" ? "CNY" : "USD";
+
+    const aliRecheckList: string[] = [];
+    if (ali) {
+      for (const d of cnOnly) {
+        if (!ALIYUN_UNSUPPORTED_TLDS.has(getTld(d))) aliRecheckList.push(d);
+      }
+      for (const d of forCf) {
+        if (ALIYUN_UNSUPPORTED_TLDS.has(getTld(d))) continue;
+        const det = map.get(d);
+        if (!det) continue;
+        if (det.cfExtensionUnsupportedViaApi || det.cfBatchMiss) aliRecheckList.push(d);
+      }
+    }
+
+    const aliRecheckDeduped = [...new Set(aliRecheckList)];
+    const aliRecheckSet = new Set(aliRecheckDeduped);
+
+    if (aliRecheckDeduped.length > 0) {
+      logDomainCheckRoute({
+        sessionId: logSid,
+        step: "aliyun_cf_fallback",
+        uniqueFqdnCount: aliRecheckDeduped.length,
+        summary:
+          "CF 阶段后统一阿里云：.cn、CF 批次无返回、或 extension_not_supported；已排除阿里云不支持的 TLD。",
+        aliyun: {
+          mode: "per_domain",
+          method: "GET",
+          host: "domain.aliyuncs.com",
+          action: "CheckDomain",
+          concurrency: 1,
+          httpCallsPerDomain: "1~2",
+          targetFqdnCount: aliRecheckDeduped.length,
+        },
+      });
+    }
+
+    const toEnrich =
+      ali && opts?.locale === "zh"
+        ? [...map.entries()]
+            .filter(([d, detail]) => {
+              if (aliRecheckSet.has(d)) return false;
+              if (!detail.available) return false;
+              if (ALIYUN_UNSUPPORTED_TLDS.has(getTld(d))) return false;
+              if (detail.source === "aliyun" && detail.currency === "CNY") return false;
+              return true;
+            })
+            .map(([d]) => d)
+        : [];
+
+    const postTotalSteps = aliRecheckDeduped.length + toEnrich.length;
+    if (postTotalSteps > 0 && ali) {
+      let postDone = 0;
+      const bumpPostCf = async (host: string) => {
+        postDone += 1;
+        await opts?.onCheckProgress?.({
+          done: phase1Total + postDone,
+          total: phase1Total + postTotalSteps,
+          host,
+        });
+      };
 
       if (toEnrich.length > 0) {
-        await runWithConcurrency(
-          toEnrich,
-          ALIYUN_CONCURRENCY,
-          async (d) => {
-            if (opts?.signal?.aborted) return null;
-            if (!fetchBudgetHasRoom(1)) return null;
-            try {
-              return await aliyunCheckDomain(d, { currency: "CNY" });
-            } catch {
-              return null;
-            }
+        logDomainCheckRoute({
+          sessionId: logSid,
+          step: "aliyun_enrich",
+          uniqueFqdnCount: toEnrich.length,
+          summary:
+            "阿里云万网补价：对 CF 已标可用且 TLD 可售的 FQDN 逐域 CheckDomain（GET domain.aliyuncs.com，串行 1 域名/步，每域名 1～2 次请求）；非 CF 式批量。",
+          aliyun: {
+            mode: "per_domain",
+            method: "GET",
+            host: "domain.aliyuncs.com",
+            action: "CheckDomain",
+            concurrency: 1,
+            httpCallsPerDomain: "1~2",
+            targetFqdnCount: toEnrich.length,
           },
-          (detail, d) => {
-            if (detail == null) return;
-            // 阿里云确认可用且有价格时，用 CNY 价格覆盖 Cloudflare USD 价格
-            if (detail.available && detail.price > 0) {
-              map.set(d, detail);
-            }
-          },
-        );
+        });
       }
+
+      await runWithConcurrency(
+        [...aliRecheckDeduped, ...toEnrich],
+        ALIYUN_CONCURRENCY,
+        async (d) => {
+          if (opts?.signal?.aborted) return null;
+          try {
+            if (aliRecheckSet.has(d)) {
+              return await aliyunCheckDomain(d, { currency: currencyPostCf });
+            }
+            return await aliyunCheckDomain(d, { currency: "CNY" });
+          } catch {
+            return null;
+          }
+        },
+        async (detail, d) => {
+          if (aliRecheckSet.has(d)) {
+            if (detail) map.set(d, detail);
+          } else if (detail && detail.available && detail.price > 0) {
+            map.set(d, detail);
+          }
+          await bumpPostCf(d);
+        },
+      );
     }
 
     return map;
@@ -191,14 +278,40 @@ export async function checkDomainsRealtime(
   // 降级路径 1：仅阿里云（CF Registrar 未配置）
   // ════════════════════════════════════════════════════════════════════════════
   if (ali) {
+    let onlyAliDone = 0;
+    const notifyAliOnlyProgress = async (host: string) => {
+      onlyAliDone += 1;
+      await opts?.onCheckProgress?.({
+        done: onlyAliDone,
+        total: Math.max(uniq.length, 1),
+        host,
+      });
+    };
+
     const currency = opts?.locale === "zh" ? "CNY" : "USD";
+
+    logDomainCheckRoute({
+      sessionId: logSid,
+      step: "aliyun_only",
+      uniqueFqdnCount: uniq.length,
+      summary:
+        "未配置 Cloudflare Registrar：全程仅阿里云 CheckDomain，逐域 GET、串行 1 域名/步；无 CF 批量阶段。",
+      aliyun: {
+        mode: "per_domain",
+        method: "GET",
+        host: "domain.aliyuncs.com",
+        action: "CheckDomain",
+        concurrency: 1,
+        httpCallsPerDomain: "1~2",
+        targetFqdnCount: uniq.length,
+      },
+    });
 
     await runWithConcurrency(
       uniq,
       ALIYUN_CONCURRENCY,
       async (d) => {
         if (opts?.signal?.aborted) return null;
-        if (!fetchBudgetHasRoom(1)) return null;
         try {
           return await aliyunCheckDomain(d, { currency });
         } catch {
@@ -208,30 +321,11 @@ export async function checkDomainsRealtime(
       async (detail, d) => {
         if (detail == null) return;
         map.set(d, detail);
-        await notifyProgress(d);
+        await notifyAliOnlyProgress(d);
       },
     );
 
     return map;
-  }
-
-  // ════════════════════════════════════════════════════════════════════════════
-  // 降级路径 2：Namecheap（兜底）
-  // ════════════════════════════════════════════════════════════════════════════
-  if (nc) {
-    for (let i = 0; i < uniq.length; i += 30) {
-      if (opts?.signal?.aborted) break;
-      const chunk = uniq.slice(i, i + 30);
-      const batch = await namecheapCheckBatch(chunk);
-      for (const d of chunk) {
-        const hit = batch.get(d);
-        if (!hit) {
-          throw new Error(`Namecheap 未返回域名 ${d} 的检测结果，请检查 API 配置与配额。`);
-        }
-        map.set(d, hit);
-        await notifyProgress(d);
-      }
-    }
   }
 
   return map;

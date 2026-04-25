@@ -28,10 +28,10 @@
 
 Most AI domain generators share one frustrating pattern: **great-sounding names that are already taken**. We took a different path.
 
-- **What you see is registrable** — every name we show has been checked in real time via Alibaba Cloud or Namecheap availability APIs.
+- **What you see is registrable** — every name we show has been checked in real time via Alibaba Cloud and/or Cloudflare Registrar availability APIs.
 - **Conversational brand understanding** — multi-turn clarification on your product, market, tone, and exclusions; the model picks naming strategies instead of blind keyword stitching.
 - **Bilingual by design** — English and Chinese are first-class, including founders who need an English domain from a Chinese brief.
-- **One-click registrar links** — Alibaba Cloud, Porkbun, and Namecheap side by side on each card, with affiliate parameters where configured.
+- **One-click registrar links** — Alibaba Cloud, Cloudflare, and GoDaddy side by side on each card, with affiliate parameters where configured.
 - **Open source & free** — MIT License; self-host or use the hosted version at [nameforme.com](https://nameforme.com).
 
 ---
@@ -58,10 +58,10 @@ Most AI domain generators share one frustrating pattern: **great-sounding names 
 | --- | --- |
 | **AI clarification** | Multi-turn Q&A; you can say “start generating” anytime to skip ahead |
 | **Multi-strategy generation** | Ten-plus strategies: blends, metaphors, affix branding, pinyin syllables, cross-language borrowings, and more |
-| **Live availability** | Alibaba Cloud / Namecheap APIs; special TLDs like `.ai` use Porkbun public pricing where needed |
+| **Live availability** | Alibaba Cloud / Cloudflare Registrar APIs; special TLDs like `.ai` use Porkbun public pricing where needed |
 | **AI scoring & rationale** | 0–100 score plus a one-line reason to help you decide fast |
 | **Transparent pricing** | First-year and renewal, premium labels; currency follows locale |
-| **Affiliate-ready links** | Alibaba Cloud / Porkbun / Namecheap with optional affiliate IDs |
+| **Affiliate-ready links** | Alibaba Cloud / GoDaddy / Cloudflare with optional affiliate IDs |
 | **Favorites & history** | Stored in `localStorage`; no accounts |
 | **Bilingual routing** | Dedicated `zh/` and `en/` routes, SEO-friendly |
 | **Abuse protection** | IP limits, optional Turnstile, optional Upstash Redis for rate limits |
@@ -108,13 +108,11 @@ LLM_API_KEY=sk-xxx
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
 
-# Domain availability — pick one (or configure both)
+# Domain availability — Cloudflare Registrar and/or Alibaba Cloud
+# CF_REGISTRAR_TOKEN=
+# CF_ACCOUNT_ID=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
-# or
-NAMECHEAP_API_USER=
-NAMECHEAP_API_KEY=
-NAMECHEAP_CLIENT_IP=
 ```
 
 > **Note:** If any LLM variable or registrar credentials are missing, related APIs return errors — we **do not** use mock availability data.

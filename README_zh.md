@@ -12,10 +12,10 @@ NameForMe 首页
 
 现有的 AI 域名生成器几乎都有同一个毛病：**看起来好听，一查全被注册了**。我们换了个做法。
 
-- **所见即可注册** — 每一个展示给你的域名，都已通过阿里云 / Namecheap 实时可用性 API 预检。
+- **所见即可注册** — 每一个展示给你的域名，都已通过阿里云 / Cloudflare Registrar 实时可用性 API 预检。
 - **对话式理解品牌** — 多轮追问业务、市场、调性、禁忌词，AI 据此动态选择命名策略，而不是简单关键词拼接。
 - **中英双语原生** — 中文创业者找英文域名这件事，我们当一等公民来做。
-- **一键跳转注册商** — 同一卡片并排阿里云万网 / Porkbun / Namecheap，带 Affiliate 参数。
+- **一键跳转注册商** — 同一卡片并排阿里云万网 / Cloudflare / GoDaddy，带 Affiliate 参数。
 - **开源 & 免费** — MIT License，可自部署；喜欢的话直接用官网托管版。
 
 ---
@@ -43,10 +43,10 @@ NameForMe 首页
 | ------------------- | ------------------------------------------------------------ |
 | 🤖 **AI 对话澄清**      | 多轮追问，也可随时「开始生成」跳过                                            |
 | 🎯 **多策略生成**        | 内置十余种命名策略：词组合、熔合造词、隐喻、前后缀品牌化、拼音音节、跨语言借词等                     |
-| ✅ **实时可用性**         | 阿里云 / Namecheap 实时 API，结果=可注册；`.ai` 等特殊 TLD 走 Porkbun 公共价目补全 |
+| ✅ **实时可用性**         | 阿里云 / Cloudflare Registrar 实时 API，结果=可注册；`.ai` 等特殊 TLD 走 Porkbun 公共价目补全 |
 | 🏅 **AI 评分与理由**     | 0–100 综合评分 + 一句话命名理由，方便快速挑选                                  |
 | 💰 **价格透明**         | 首年价、续费价、溢价标注；按语言切换货币                                         |
-| 🔗 **Affiliate 跳转** | 阿里云 / Porkbun / Namecheap 三选一，带推广参数                          |
+| 🔗 **Affiliate 跳转** | 阿里云 / GoDaddy / Cloudflare，带推广参数                          |
 | ⭐ **收藏与历史**         | `localStorage` 本地存储，无需账号                                     |
 | 🌐 **中英双语**         | `zh/` 与 `en/` 独立路由，SEO 友好                                    |
 | 🛡️ **防刷与熔断**       | IP 限流 + 可选 Turnstile + 可选 Upstash Redis 持久化                  |
@@ -94,13 +94,11 @@ LLM_API_KEY=sk-xxx
 LLM_BASE_URL=https://api.deepseek.com/v1
 LLM_MODEL=deepseek-chat
 
-# 域名可用性检测（二选一）
+# 域名可用性检测（Cloudflare Registrar 和/或阿里云）
+# CF_REGISTRAR_TOKEN=
+# CF_ACCOUNT_ID=
 ALIYUN_ACCESS_KEY_ID=
 ALIYUN_ACCESS_KEY_SECRET=
-# 或
-NAMECHEAP_API_USER=
-NAMECHEAP_API_KEY=
-NAMECHEAP_CLIENT_IP=
 ```
 
 > **提示**：LLM 三项与域名检测凭证任一缺失，相关接口会直接返回错误 — 我们**不使用模拟数据**。

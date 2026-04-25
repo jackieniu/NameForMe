@@ -1,5 +1,48 @@
 import { createOpenAI } from "@ai-sdk/openai";
 
+const DEFAULT_FETCH: typeof fetch = globalThis.fetch.bind(globalThis);
+
+/**
+ * DeepSeek 思考模式会额外消耗并返回 `reasoning_content`；对 **JSON 输出**（`response_format`）场景，
+ * 在请求体中写入 `thinking: { type: "disabled" }` 可避免思维链与最终 `content` 的解析混叠。
+ * 设 `LLM_DEEPSEEK_THINKING=true` 时不在此处关闭（仍走 DeepSeek 默认，思考在 JSON 任务上易拖慢/干扰解析）。
+ */
+function createDeepSeekJsonAwareFetch(
+  baseFetch: typeof fetch = DEFAULT_FETCH,
+): typeof fetch {
+  return async (input, init) => {
+    if (process.env.LLM_DEEPSEEK_THINKING === "true") {
+      return baseFetch(input as RequestInfo, init);
+    }
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : (input as Request).url;
+    if (!/deepseek\.com/i.test(url) || !url.includes("chat/completions")) {
+      return baseFetch(input as RequestInfo, init);
+    }
+    const body = init?.body;
+    if (typeof body !== "string" || !body) {
+      return baseFetch(input as RequestInfo, init);
+    }
+    try {
+      const parsed = JSON.parse(body) as Record<string, unknown> | null;
+      if (!parsed || typeof parsed !== "object") return baseFetch(input as RequestInfo, init);
+      const rf = parsed.response_format as { type?: string } | undefined;
+      if (!rf || typeof rf.type !== "string") {
+        return baseFetch(input as RequestInfo, init);
+      }
+      if (rf.type === "json_object" || rf.type === "json_schema") {
+        parsed.thinking = { type: "disabled" };
+        return baseFetch(input as RequestInfo, {
+          ...init,
+          body: JSON.stringify(parsed),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
+    return baseFetch(input as RequestInfo, init);
+  };
+}
+
 /**
  * 通用 OpenAI 兼容大模型配置（自托管 / 换供应商时只改环境变量）。
  *
@@ -68,7 +111,11 @@ export function getChatModel() {
   const sig = buildCacheSignature();
   if (cached && cacheSignature === sig) return cached;
 
-  const client = createOpenAI({ baseURL, apiKey });
+  const client = createOpenAI({
+    baseURL,
+    apiKey,
+    fetch: createDeepSeekJsonAwareFetch(),
+  });
   cached = client.chat(modelId!);
   cacheSignature = sig;
   return cached;

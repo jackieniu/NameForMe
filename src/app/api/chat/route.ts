@@ -8,6 +8,7 @@ import { protectAfterJsonParsed } from "@/lib/api-protection";
 import { getChatModel, isLlmConfigured } from "@/lib/ai/provider";
 import chatSystemPrompts from "@/lib/chat/system-prompts.json";
 import { logChat } from "@/lib/ai-logger";
+import { CHAT_USER_MESSAGE_MAX_CHARS } from "@/lib/chat/limits";
 import { isGenProgressUiMessage } from "@/lib/chat/strip-assistant-progress-hallucination";
 
 const bodySchema = z.looseObject({
@@ -37,6 +38,27 @@ export async function POST(req: Request) {
 
   const locale = parsed.data.locale ?? "en";
   const messages = (parsed.data.messages as UIMessage[]).filter((m) => !isGenProgressUiMessage(m));
+
+  const last = messages[messages.length - 1];
+  if (last?.role === "user") {
+    const text = (last.parts ?? [])
+      .filter(
+        (p): p is { type: "text"; text: string } =>
+          (p as { type?: string }).type === "text",
+      )
+      .map((p) => p.text)
+      .join("");
+    if (text.length > CHAT_USER_MESSAGE_MAX_CHARS) {
+      return new Response(
+        JSON.stringify({
+          error: "Message too long",
+          code: "CHAT_MESSAGE_TOO_LONG",
+          max: CHAT_USER_MESSAGE_MAX_CHARS,
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } },
+      );
+    }
+  }
 
   if (!isLlmConfigured()) {
     return new Response(

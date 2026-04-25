@@ -38,20 +38,20 @@ export async function POST(req: Request) {
   } = parsed.data;
 
   try {
+    const sessionId = randomUUID();
     const genOpts = {
       seed: seed ?? Math.floor(Date.now() % 1_000_000_000),
       locale,
       strategies,
       executedStrategyKeys: executedStrategyKeys ? new Set(executedStrategyKeys) : undefined,
       historyDomains: historyDomains ? new Set(historyDomains) : undefined,
+      checkLogContext: { sessionId },
     };
 
     if (stream) {
       const encoder = new TextEncoder();
       const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
       const writer = writable.getWriter();
-
-      const sessionId = randomUUID();
       const startedAt = Date.now();
       const elapsed = () => Date.now() - startedAt;
 

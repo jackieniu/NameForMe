@@ -6,19 +6,11 @@ import { buildAffiliateUrl } from "@/lib/domains/affiliate";
 import { UiTooltip } from "@/components/ui-tooltip";
 import type { RegistrarId } from "@/types/domain";
 
-type LinkLabelKey =
-  | "registerLinkAliyun"
-  | "registerLinkNamecheap"
-  | "registerLinkGodaddy"
-  | "registerLinkCloudflare";
-type OpenTooltipKey =
-  | "registerOpenAliyun"
-  | "registerOpenNamecheap"
-  | "registerOpenGodaddy"
-  | "registerOpenCloudflare";
+type LinkLabelKey = "registerLinkAliyun" | "registerLinkGodaddy";
+type OpenTooltipKey = "registerOpenAliyun" | "registerOpenGodaddy";
 
 /**
- * 三家注册商：href、文案、tooltip、可选 SVG（顶栏收藏下拉用紧凑图标）。
+ * 注册商入口：href、文案、tooltip、可选 SVG（顶栏收藏下拉用紧凑图标）。
  * 搜索页「可用域名」卡片使用 `presentation="text"`，仅文字 + 品牌色底。
  */
 export const REGISTRAR_CONFIG: Record<
@@ -39,14 +31,6 @@ export const REGISTRAR_CONFIG: Record<
     className:
       "bg-[#d95e00] text-white shadow-sm hover:bg-[#b84e00] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#d95e00]",
   },
-  namecheap: {
-    href: (d) => buildAffiliateUrl(d, "namecheap"),
-    labelKey: "registerLinkNamecheap",
-    tooltipKey: "registerOpenNamecheap",
-    iconSrc: "/namecheap.svg",
-    className:
-      "bg-[#ff8c44] text-white shadow-sm hover:bg-[#f07a30] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff8c44]",
-  },
   godaddy: {
     href: (d) => buildAffiliateUrl(d, "godaddy"),
     labelKey: "registerLinkGodaddy",
@@ -55,22 +39,9 @@ export const REGISTRAR_CONFIG: Record<
     className:
       "bg-[#1BDBAD] text-white shadow-sm hover:bg-[#17c49b] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#1BDBAD]",
   },
-  cloudflare: {
-    href: (d) => buildAffiliateUrl(d, "cloudflare"),
-    labelKey: "registerLinkCloudflare",
-    tooltipKey: "registerOpenCloudflare",
-    iconSrc: "/cloudflare.svg",
-    className:
-      "bg-[#F48120] text-white shadow-sm hover:bg-[#e07010] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F48120]",
-  },
 };
 
-export const REGISTRAR_ORDER: readonly RegistrarId[] = [
-  "aliyun",
-  "cloudflare",
-  "namecheap",
-  "godaddy",
-];
+export const REGISTRAR_ORDER: readonly RegistrarId[] = ["aliyun", "godaddy"];
 
 /** TLD 列表：阿里云不出售，不显示阿里云注册按钮 */
 const ALIYUN_UNSUPPORTED_TLDS = new Set([".io", ".ai", ".org", ".co", ".app", ".dev"]);
@@ -164,13 +135,11 @@ export function RegistrarButton({
 
 export function RegistrarButtonRow({
   domain,
-  preferredRegistrar,
   size = "md",
   presentation = "text",
   className,
 }: {
   domain: string;
-  preferredRegistrar: RegistrarId;
   size?: "sm" | "md";
   presentation?: RegistrarPresentation;
   className?: string;

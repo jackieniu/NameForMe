@@ -90,7 +90,6 @@ export function SavedDomainsNav() {
                   </span>
                   <RegistrarButtonRow
                     domain={f.domain}
-                    preferredRegistrar={f.registrar ?? "namecheap"}
                     presentation="icon"
                     size="sm"
                     className="shrink-0"

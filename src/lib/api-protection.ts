@@ -41,7 +41,7 @@ export function jsonGateErrorResponse(g: Extract<ApiGateResult, { ok: false }>):
  *
  * skipTurnstile: 跳过 Turnstile 校验（用于次要接口，保留限流）。
  * Turnstile token 是一次性的——同一 token 不能给两个接口共用，
- * 故 compress 等低风险接口传 true，将唯一 token 留给 generate 接口。
+ * 对仅需限流、不强制人机校验的辅助接口可传 `skipTurnstile: true`。
  */
 export async function protectAfterJsonParsed(opts: {
   req: Request;

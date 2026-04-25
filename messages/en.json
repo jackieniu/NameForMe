@@ -94,9 +94,10 @@
     "roleUser": "You",
     "roleAssistant": "AI",
     "inputPlaceholder": "Type your message…",
+    "chatMessageTooLong": "Each message can be at most {max} characters. Shorten and try again.",
     "startGenerate": "Start generating",
     "errorRetry": "Something went wrong. Try again.",
-    "genInterrupted": "Generation was interrupted (app went to background). Please ask to generate again.",
+    "genInterrupted": "Generation was interrupted. Please start again. If you just came back to this tab, try again—long requests may be paused in the background.",
     "httpRateLimit": "Too many requests. Try again in {sec}s.",
     "httpSiteBusy": "The site is busy right now. Try again later.",
     "httpAccessDenied": "Verification failed or access denied. Refresh the page and try again.",
@@ -155,10 +156,7 @@
     "copyDomainsTooltip": "Copy all domains",
     "clearListTooltip": "Clear domain list",
     "registerOpenAliyun": "Register on Alibaba Cloud",
-
-    "registerOpenNamecheap": "Register on Namecheap",
     "registerOpenGodaddy": "Register on GoDaddy",
-    "registerOpenCloudflare": "Register on Cloudflare",
     "favoriteFromListTooltip": "Add to favorites",
     "removeFromListTooltip": "Remove from list",
     "filterEmpty": "No domains match these filters — try adjusting them.",
@@ -169,10 +167,7 @@
     "priceLineUsdEn": "{price} USD first year · renew {renewal} USD/yr{tierNote}",
     "priceLineUnknown": "No reference price (see registrar)",
     "registerLinkAliyun": "Alibaba",
-
-    "registerLinkNamecheap": "Namecheap",
-    "registerLinkGodaddy": "GoDaddy",
-    "registerLinkCloudflare": "Cloudflare"
+    "registerLinkGodaddy": "GoDaddy"
   },
   "Wizard": {
     "description": "Project description",

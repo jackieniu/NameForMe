@@ -55,7 +55,8 @@ export type DomainRequirements = {
 };
 
 export type RegistrationTier = "normal" | "premium" | "ultra-premium";
-export type RegistrarId = "namecheap" | "aliyun" | "godaddy" | "cloudflare";
+/** 用户可见的注册跳转目标（与域名检测 API 来源无关） */
+export type RegistrarId = "aliyun" | "godaddy";
 
 export type DomainAvailabilityStatus = "available" | "taken" | "premium";
 

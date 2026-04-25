@@ -19,6 +19,9 @@
  *   error       出错时的错误信息
  *
  *   type "aliyun_checkdomain"：阿里云 CheckDomain 失败排查（HTTP 非 2xx 或返回体带 Code）
+ *
+ *   type "domain_check_route"：域名检测发向何处（`cloudflare` 为 POST 批量、
+ *   `aliyun` 为 GET 逐域 CheckDomain）；可选 `sessionId` 与 `type: generate_stream` 对齐
  */
 
 // 日志输出：Node.js 写文件；无 fs 时回退到 console
@@ -126,6 +129,52 @@ export function logAliyunCheckDomainFailure(entry: AliyunCheckDomainFailureEntry
   appendLog({
     ts: new Date().toISOString(),
     type: "aliyun_checkdomain",
+    ...entry,
+  });
+}
+
+// ─── 域名检测线路（与 generate stream 的 sessionId 关联）────────────────────
+
+/** Cloudflare：Registrar Business API 批量；阿里云：万网 CheckDomain 逐域（串行 1 域名/步） */
+export interface DomainCheckRouteLogEntry {
+  sessionId?: string;
+  /**
+   * cf_phase1           仅 CF 主检测（或随后还有 aliyun 补价）
+   * aliyun_cf_fallback  CF 不支持/不可靠后缀（如 .cn）改走阿里云逐域覆盖
+   * aliyun_enrich       在 CF 结果上逐域问阿里云 CNY
+   * aliyun_only      未配 CF 时，全程阿里云逐域
+   */
+  step: "cf_phase1" | "aliyun_cf_fallback" | "aliyun_enrich" | "aliyun_only";
+  /** 与 step 同义的人类可读说明 */
+  summary: string;
+  uniqueFqdnCount: number;
+  cloudflare?: {
+    mode: "batch";
+    /** 单次请求 body 中 domains 最多条数 */
+    maxDomainsPerRequest: 20;
+    method: "POST";
+    baseUrl: "https://api.cloudflare.com/client/v4";
+    pathPattern: string;
+    /** 本次 Phase1 会发起的 HTTP 批次数 */
+    httpBatchRequestCount: number;
+  };
+  aliyun?: {
+    mode: "per_domain";
+    method: "GET";
+    host: "domain.aliyuncs.com";
+    action: "CheckDomain";
+    /** 与 orchestrator 一致：串行、每域名 1～2 次 fetch */
+    concurrency: 1;
+    httpCallsPerDomain: "1~2";
+    /** 本阶段要过阿里云的 FQDN 数（enrich 时仅「待补价」子集；only 时等于 uniqueFqdnCount） */
+    targetFqdnCount: number;
+  };
+}
+
+export function logDomainCheckRoute(entry: DomainCheckRouteLogEntry) {
+  appendLog({
+    ts: new Date().toISOString(),
+    type: "domain_check_route",
     ...entry,
   });
 }

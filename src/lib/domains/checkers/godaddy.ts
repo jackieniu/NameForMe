@@ -41,8 +41,7 @@ function microToUsd(micro: number): number {
 
 /**
  * 批量检测域名。
- * @param domains   需要检测的域名列表（小写 FQDN）
- * @param onFetch   每发起一次 HTTP 请求前回调（用于 subrequest 预算计数）
+ * @param onFetch 每发起一次 HTTP 批量请求前回调（可选，用于可观测性）
  */
 export async function godaddyCheckBatch(
   domains: string[],

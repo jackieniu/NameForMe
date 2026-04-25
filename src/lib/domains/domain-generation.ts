@@ -1,4 +1,7 @@
-import { buildAffiliateUrl } from "@/lib/domains/affiliate";
+import {
+  affiliateRegistrarFromCheckSource,
+  buildAffiliateUrl,
+} from "@/lib/domains/affiliate";
 import { USD_TO_CNY } from "@/lib/domains/currency-fx";
 import { scoreAndSelectRegisteredDomainsWithAi } from "@/lib/domains/ai-refine";
 import {
@@ -10,7 +13,6 @@ import {
   parseWordComboParams,
 } from "@/lib/domains/candidate-generator";
 import { checkDomainsRealtime } from "@/lib/domains/checkers/orchestrator";
-import { runWithFetchBudget } from "@/lib/domains/fetch-budget";
 import type {
   DomainAvailabilityStatus,
   DomainGenerateResponse,
@@ -103,14 +105,10 @@ const MAX_CHECK_PER_BATCH = 220;
 // ---------- word_combo 新管线 & 前缀扩容 的编排常量 ----------
 /** word_combo「攒够即停」的目标：可注册且预算内条数 */
 const WORD_COMBO_TARGET_AVAILABLE = 80;
-/**
- * 单次 generate 总检测硬上限（跨策略累计）。
- * CF Registrar 批量检测每 20 个域名仅消耗 1 个 subrequest，500 个域名 = 25 次 subrequest，
- * 配额消耗极低，无需人为压缩检测量。Aliyun 补价配额由 SubrequestBudget 自然控制。
- */
+/** 单次 generate 总检测硬上限（跨策略累计，防止单次任务过长） */
 const GLOBAL_CHECK_LIMIT = 500;
 /** 单次 generate 的墙钟时间上限，超时停止发新检测 */
-const GENERATE_WALLCLOCK_MS = 90_000;
+const GENERATE_WALLCLOCK_MS = 180_000; // 3 分钟；与 GLOBAL_CHECK_LIMIT 二选一先触顶即停
 /** word_combo 单个 word 空转保护：检测 ≥ 60 条且新增可注册 < 2 时跳词 */
 const WORDCOMBO_STALL_MIN_CHECKED = 60;
 const WORDCOMBO_STALL_MIN_NEW = 2;
@@ -221,6 +219,8 @@ export interface GenerationOptions {
   onProgress?: (ev: GenerateProgressEvent) => void | Promise<void>;
   /** 与 HTTP `Request.signal` 对齐：中止后不再向客户端写进度，并让检测层尽快停接新域名。 */
   abortSignal?: AbortSignal;
+  /** 与 `logs/ai-interactions.jsonl` 中 `domain_check_route` 与 generate 流关联 */
+  checkLogContext?: { sessionId?: string };
 }
 
 export async function runDomainGeneration(
@@ -236,7 +236,7 @@ export async function runDomainGeneration(
     advisoryMessage?: string;
   }
 > {
-  return runWithFetchBudget(() => _runDomainGenerationImpl(req, options));
+  return _runDomainGenerationImpl(req, options);
 }
 
 /**
@@ -343,6 +343,8 @@ async function _runDomainGenerationImpl(
         ? `${strategy}: premium / aftermarket pricing — still registrable via registrar.`
         : `${strategy}: fits your brief; checked via ${det.source}.`;
 
+    const affiliateRegistrar = affiliateRegistrarFromCheckSource(det.source);
+
     return {
       domain: host,
       score,
@@ -354,8 +356,8 @@ async function _runDomainGenerationImpl(
         currency: det.currency,
         tier,
       },
-      registrar: det.registrar,
-      affiliateUrl: buildAffiliateUrl(host, det.registrar),
+      registrar: affiliateRegistrar,
+      affiliateUrl: buildAffiliateUrl(host, affiliateRegistrar),
       availability,
     };
   }
@@ -433,6 +435,7 @@ async function _runDomainGenerationImpl(
     const checks = await checkDomainsRealtime(checkTargets, batchReq.market, {
       signal: options.abortSignal,
       locale,
+      checkLogContext: options.checkLogContext,
 
       onCheckProgress: async ({ done, total, host }) => {
         if (done !== 1 && done !== total && done % 12 !== 0) return;
@@ -569,6 +572,7 @@ async function _runDomainGenerationImpl(
         const checks = await checkDomainsRealtime(slice, req.market, {
           signal: options.abortSignal,
           locale,
+          checkLogContext: options.checkLogContext,
 
           onCheckProgress: async ({ done, total, host }) => {
             if (done !== 1 && done !== total && done % 12 !== 0) return;
@@ -687,6 +691,7 @@ async function _runDomainGenerationImpl(
       const checks = await checkDomainsRealtime(slice, req.market, {
         signal: options.abortSignal,
         locale,
+        checkLogContext: options.checkLogContext,
 
         onCheckProgress: async ({ done, total, host }) => {
           if (done !== 1 && done !== total && done % 12 !== 0) return;
@@ -805,6 +810,7 @@ async function _runDomainGenerationImpl(
       const checks = await checkDomainsRealtime(slice, req.market, {
         signal: options.abortSignal,
         locale,
+        checkLogContext: options.checkLogContext,
 
         onCheckProgress: async ({ done, total, host }) => {
           if (done !== 1 && done !== total && done % 12 !== 0) return;

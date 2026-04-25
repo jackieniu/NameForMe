@@ -76,9 +76,11 @@ export default async function LocaleLayout({
         }}
       >
         <NextIntlClientProvider messages={messages}>
-          <div className="flex min-h-dvh flex-col">
+          <div className="site-shell flex min-h-0 min-h-dvh w-full max-w-full flex-col">
             <SiteHeader />
-            <main className="flex flex-1 flex-col pt-0">{children}</main>
+            <main className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden pt-0">
+              {children}
+            </main>
             <SiteFooter />
           </div>
         </NextIntlClientProvider>

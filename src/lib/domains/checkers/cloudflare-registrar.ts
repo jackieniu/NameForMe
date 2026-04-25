@@ -47,8 +47,6 @@ export function cloudflareRegistrarConfigured(): boolean {
  * 批量检测域名可用性与注册/续费价格。
  *
  * @param domains  完整 FQDN 列表（小写）
- *
- * subrequest 计数由全局 fetch 钩子（fetch-budget.ts）自动完成，无需手动传回调。
  */
 export async function cloudflareRegistrarCheckBatch(
   domains: string[],
@@ -91,7 +89,11 @@ export async function cloudflareRegistrarCheckBatch(
 
       for (const r of data.result.domains) {
         const fqdn = r.name.toLowerCase();
-        const available = r.registrable === true;
+        const reasonRaw = (r.reason ?? "").toLowerCase();
+        const cfUnsupported =
+          reasonRaw.includes("extension_not_supported") ||
+          reasonRaw.includes("not_supported_via_api");
+        const available = r.registrable === true && !cfUnsupported;
         const isPremium = r.tier === "premium";
 
         const regPrice =
@@ -108,18 +110,11 @@ export async function cloudflareRegistrarCheckBatch(
           currency: "USD",
           source: "cloudflare",
           registrar: "cloudflare",
+          cfExtensionUnsupportedViaApi: cfUnsupported || undefined,
         });
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      // fetch 予算枯渇またはWorkers subrequest 上限 → ループを中断
-      if (
-        msg.includes("Subrequest budget exhausted") ||
-        msg.includes("Too many subrequests")
-      ) {
-        console.warn("[cf-registrar] budget/subrequest limit hit, stopping batch loop");
-        break;
-      }
       console.error("[cf-registrar] batch check error:", msg);
     }
   }

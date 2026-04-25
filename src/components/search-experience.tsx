@@ -12,6 +12,7 @@ import { ChatMarkdown } from "@/components/chat-markdown";
 import { UiTooltip } from "@/components/ui-tooltip";
 import { DomainQuestionnaire } from "@/components/domain-questionnaire";
 import { formatQuestionnaireUserMessage } from "@/lib/chat/format-questionnaire-message";
+import { CHAT_USER_MESSAGE_MAX_CHARS } from "@/lib/chat/limits";
 import {
   parseChatAction,
   parseRequirementsOverride,
@@ -115,16 +116,6 @@ type SortKey =
   | "price-asc"
   | "price-desc";
 
-/** Approximate token count for compression阈值；不含生成进度等非对话气泡 */
-function estimateLength(messages: UIMessage[]): number {
-  return messages
-    .filter((m) => !isGenProgressUiMessage(m))
-    .reduce((sum, m) => sum + textFromParts(m).length, 0);
-}
-
-const COMPRESS_ROUNDS = 10;
-const COMPRESS_CHARS = 6000;
-
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -168,7 +159,12 @@ export function SearchExperience({
   const wizardReqRef = useRef<DomainRequirements | null>(null);
   const turnstileRef = useRef<TurnstileHostHandle>(null);
   const fingerprintRef = useRef("");
-  const chatBlockRef = useRef<{ code: string; retryAfterSec?: number } | null>(null);
+  const chatBlockRef = useRef<{
+    code: string;
+    retryAfterSec?: number;
+    max?: number;
+  } | null>(null);
+  const [chatInputError, setChatInputError] = useState<string | null>(null);
 
   useEffect(() => {
     fingerprintRef.current = getOrCreateBrowserClientId();
@@ -182,14 +178,14 @@ export function SearchExperience({
         fetch: async (input, init) => {
           const res = await globalThis.fetch(input, init);
           if (!res.ok) {
-            let parsed: { code?: string; retryAfterSec?: number } = {};
+            let parsed: { code?: string; retryAfterSec?: number; max?: number } = {};
             try {
               parsed = (await res.clone().json()) as typeof parsed;
             } catch {
               /* ignore */
             }
             chatBlockRef.current = parsed.code
-              ? { code: parsed.code, retryAfterSec: parsed.retryAfterSec }
+              ? { code: parsed.code, retryAfterSec: parsed.retryAfterSec, max: parsed.max }
               : null;
           } else {
             chatBlockRef.current = null;
@@ -254,10 +250,8 @@ export function SearchExperience({
     "idle" | "generating" | "checking" | "scoring" | "done"
   >("idle");
   const genPhaseIdRef = useRef<string>("");
-  /** 当前生成请求的 AbortController，用于后台冻结时主动中断 */
+  /** 当前生成请求的 AbortController（fetch signal；可扩展为显式取消） */
   const genAbortRef = useRef<AbortController | null>(null);
-  /** 流最后一次收到数据的时间戳，看门狗用 */
-  const lastActivityRef = useRef<number>(0);
   /** 串行执行多次「生成」，避免并发时后一批以空列表为基准合并导致覆盖上一批 */
   const generateQueueRef = useRef(Promise.resolve());
 
@@ -347,10 +341,11 @@ export function SearchExperience({
 
       const onCheckProgress = (batchDone: number) => {
         const cumDone = cumCheckedCompleted + batchDone;
+        const denom = Math.max(cumCandidates, cumDone, 1);
         refreshLoopBubble(
           t("genChecking", {
             done: cumDone,
-            total: Math.max(cumCandidates, 1),
+            total: denom,
           }),
         );
       };
@@ -375,50 +370,12 @@ export function SearchExperience({
 
       const abortCtrl = new AbortController();
       genAbortRef.current = abortCtrl;
-      lastActivityRef.current = Date.now();
 
       try {
         const curMessages = messagesRef.current as UIMessage[];
-        const chatHistoryForAi = curMessages.filter((m) => !isGenProgressUiMessage(m));
-        let contextMessages = chatHistoryForAi;
-
+        const contextMessages = curMessages.filter((m) => !isGenProgressUiMessage(m));
         const fp = fingerprintRef.current;
         const turnstileToken = (await turnstileRef.current?.getToken()) ?? "";
-
-        const rounds = Math.floor(chatHistoryForAi.length / 2);
-        const totalLen = estimateLength(chatHistoryForAi);
-        if (rounds >= COMPRESS_ROUNDS || totalLen >= COMPRESS_CHARS) {
-          const compressRes = await fetch("/api/chat/compress", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(fp ? { "X-NFM-Fingerprint": fp } : {}),
-            },
-            body: JSON.stringify({
-              locale,
-              messages: chatHistoryForAi.map((m) => ({
-                role: m.role,
-                content: textFromParts(m),
-              })),
-              // 不传 turnstileToken：compress 跳过 Turnstile 校验，
-              // 唯一 token 留给后续 /api/domains/generate 使用。
-            }),
-          }).catch(() => null);
-          if (compressRes?.ok) {
-            const { summary } = (await compressRes.json().catch(() => ({}))) as {
-              summary?: string;
-            };
-            if (summary) {
-              contextMessages = [
-                {
-                  id: generateId(),
-                  role: "user",
-                  parts: [{ type: "text", text: summary }],
-                },
-              ];
-            }
-          }
-        }
 
         // 注意：助手消息里可能含 [[ACTION:...]] 和 [[STRATEGIES:...]] 技术标记，
         // 这些是给程序读的，不应再灌给后端的 refine AI（否则会污染 slug 与提示词）。
@@ -437,7 +394,8 @@ export function SearchExperience({
           .filter(Boolean)
           .join("\n")
           .trim()
-          .slice(0, 2000);
+          // 大模型长上下文下不再预压缩对话；仅限制单次请求体大小
+          .slice(0, 12_000);
 
         const requirements: DomainRequirements = {
           ...req,
@@ -543,7 +501,6 @@ export function SearchExperience({
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            lastActivityRef.current = Date.now();
             buffer += decoder.decode(value, { stream: true });
             for (;;) {
               const i = buffer.indexOf("\n");
@@ -593,7 +550,6 @@ export function SearchExperience({
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") {
-          // 用户切后台导致连接中断，提示重试
           setGenError(t("genInterrupted"));
         } else {
           setGenError(t("errorRetry"));
@@ -822,28 +778,6 @@ export function SearchExperience({
     };
   }, [wizardReq]);
 
-  // iOS Safari watchdog: when page becomes visible and stream has been silent
-  // for 5 s, abort the stuck connection and let the user retry.
-  useEffect(() => {
-    const handleVisibility = () => {
-      if (document.visibilityState !== "visible") return;
-      if (!genPhaseIdRef.current) return; // not generating
-
-      const whenVisible = Date.now();
-      const watchdog = setTimeout(() => {
-        if (!genPhaseIdRef.current) return; // finished on its own
-        if (lastActivityRef.current >= whenVisible) return; // got new data
-        // Stream appears stuck — abort
-        genAbortRef.current?.abort();
-      }, 5000);
-
-      return () => clearTimeout(watchdog);
-    };
-
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () => document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
-
   // Strip markers from displayed messages
   const displayMessages = useMemo(
     () =>
@@ -998,8 +932,8 @@ export function SearchExperience({
     <div
       className={`mx-auto flex w-full flex-col px-4 py-4 sm:px-6 sm:py-5 ${
         wizardReq
-          ? // 对话阶段：填满 main 的剩余空间，内部列各自滚动
-            "max-w-screen-2xl flex-1 min-h-0 overflow-hidden"
+          ? // 对话阶段：在 main 内占满高度；须为 flex 列，子项 flex-1 的「双栏」才有限高可滚动
+            "w-full min-h-0 max-w-screen-2xl flex-1 flex-col overflow-hidden"
           : // 问卷阶段：随内容自然撑高，允许整页滚动
             "max-w-3xl pb-8"
       }`}
@@ -1103,9 +1037,9 @@ export function SearchExperience({
           />
         </>
       ) : (
-        <>
+        <div className="flex min-h-0 w-full min-w-0 flex-1 flex-col">
           <RateLimitBanner />
-          <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 lg:flex-row lg:gap-6">
+          <div className="relative flex min-h-0 w-full min-w-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row lg:gap-6">
           {clearListOpen ? (
             <div
               className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
@@ -1147,7 +1081,7 @@ export function SearchExperience({
           ) : null}
 
           {/* Chat column */}
-          <section className={`min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "chat" ? "flex" : "hidden lg:flex"}`}>
+          <section className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "chat" ? "flex" : "hidden lg:flex"}`}>
             <h2 className="shrink-0 text-base font-semibold tracking-tight text-foreground">
               {t("chatColumnTitle")}
             </h2>
@@ -1203,6 +1137,10 @@ export function SearchExperience({
                     ? t("httpRateLimit", {
                         sec: chatBlockRef.current.retryAfterSec ?? 60,
                       })
+                    : chatBlockRef.current?.code === "CHAT_MESSAGE_TOO_LONG"
+                      ? t("chatMessageTooLong", {
+                          max: chatBlockRef.current.max ?? CHAT_USER_MESSAGE_MAX_CHARS,
+                        })
                     : chatBlockRef.current?.code === "SITE_DEGRADED"
                       ? t("httpSiteBusy")
                       : chatBlockRef.current?.code === "TURNSTILE_FAILED" ||
@@ -1222,6 +1160,11 @@ export function SearchExperience({
                 </div>
               ) : null}
 
+              {chatInputError ? (
+                <p className="mt-2 text-sm text-red-600" role="alert">
+                  {chatInputError}
+                </p>
+              ) : null}
               <form
                 className="mt-3 shrink-0 flex flex-col gap-2 sm:flex-row"
                 autoComplete="off"
@@ -1230,6 +1173,13 @@ export function SearchExperience({
                   const fd = new FormData(e.currentTarget);
                   const text = String(fd.get("chat-message") ?? "").trim();
                   if (!text) return;
+                  if (text.length > CHAT_USER_MESSAGE_MAX_CHARS) {
+                    setChatInputError(
+                      t("chatMessageTooLong", { max: CHAT_USER_MESSAGE_MAX_CHARS }),
+                    );
+                    return;
+                  }
+                  setChatInputError(null);
                   void sendMessage({ text });
                   e.currentTarget.reset();
                 }}
@@ -1237,6 +1187,8 @@ export function SearchExperience({
                 <input
                   name="chat-message"
                   placeholder={t("inputPlaceholder")}
+                  maxLength={CHAT_USER_MESSAGE_MAX_CHARS}
+                  onChange={() => setChatInputError(null)}
                   autoComplete="off"
                   autoCorrect="off"
                   autoCapitalize="off"
@@ -1259,7 +1211,7 @@ export function SearchExperience({
           </section>
 
           {/* Domains column */}
-          <section className={`min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "domains" ? "flex" : "hidden lg:flex"}`}>
+          <section className={`min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white p-4 shadow-sm ${mobileTab === "domains" ? "flex" : "hidden lg:flex"}`}>
             <div className="flex shrink-0 items-center justify-between gap-2">
               <h2 className="min-w-0 flex-1 text-base font-semibold tracking-tight text-foreground">
                 {t("domainsColumnTitle")}
@@ -1300,10 +1252,12 @@ export function SearchExperience({
             ) : null}
 
             {domainListCount > 0 ? (
-              <div className="mt-3 shrink-0 rounded-xl border border-black/[0.06] bg-background p-3">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <label className="flex min-w-[10rem] flex-1 basis-[14rem] items-center gap-2 text-sm font-medium text-muted sm:max-w-[22rem]">
-                    <span className="shrink-0 whitespace-nowrap">{t("filterKeyword")}</span>
+              <div className="mt-3 shrink-0 rounded-xl border border-black/[0.06] bg-background p-2 sm:p-3">
+                <div className="flex flex-nowrap items-center gap-x-2 gap-y-0 overflow-x-auto overscroll-x-contain pb-0.5 [-webkit-overflow-scrolling:touch] sm:flex-wrap sm:gap-x-4 sm:gap-y-2 sm:overflow-visible sm:pb-0">
+                  <label className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-muted sm:min-w-[10rem] sm:max-w-[22rem] sm:basis-[14rem] sm:gap-2">
+                    <span className="max-sm:sr-only sm:shrink-0 sm:whitespace-nowrap sm:text-sm">
+                      {t("filterKeyword")}
+                    </span>
                     <input
                       type="search"
                       value={listKeywordFilter}
@@ -1311,15 +1265,17 @@ export function SearchExperience({
                       placeholder={t("filterKeywordPlaceholder")}
                       autoComplete="off"
                       spellCheck={false}
-                      className="min-w-0 flex-1 rounded-lg border border-black/[0.08] bg-white px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted/70 focus:ring-2 focus:ring-brand/20"
+                      className="min-w-[6rem] flex-1 rounded-lg border border-black/[0.08] bg-white px-2 py-2 text-sm text-foreground outline-none placeholder:text-muted/70 focus:ring-2 focus:ring-brand/20 max-sm:min-w-[5.5rem] max-sm:py-1.5 max-sm:text-xs"
                     />
                   </label>
-                  <label className="flex min-w-0 max-w-full items-center gap-2 text-sm font-medium text-muted">
-                    <span className="shrink-0 whitespace-nowrap">{t("filterSuffix")}</span>
+                  <label className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted sm:gap-2">
+                    <span className="max-sm:sr-only sm:shrink-0 sm:whitespace-nowrap sm:text-sm">
+                      {t("filterSuffix")}
+                    </span>
                     <select
                       value={suffixFilter}
                       onChange={(e) => setSuffixFilter(e.target.value)}
-                      className="min-w-0 max-w-[12rem] flex-1 rounded-lg border border-black/[0.08] bg-white px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand/20 sm:max-w-none sm:flex-none"
+                      className="max-sm:w-[5.5rem] w-[4.75rem] shrink-0 rounded-lg border border-black/[0.08] bg-white py-2 pl-1.5 pr-6 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand/20 max-sm:py-1.5 max-sm:text-xs sm:w-auto sm:min-w-0 sm:max-w-[12rem] sm:flex-1 sm:px-2"
                     >
                       <option value="">{t("filterSuffixAll")}</option>
                       {uniqueTlds.map((suf) => (
@@ -1329,12 +1285,14 @@ export function SearchExperience({
                       ))}
                     </select>
                   </label>
-                  <label className="flex min-w-0 max-w-full items-center gap-2 text-sm font-medium text-muted">
-                    <span className="shrink-0 whitespace-nowrap">{t("sortBy")}</span>
+                  <label className="flex shrink-0 items-center gap-1.5 text-sm font-medium text-muted sm:min-w-0 sm:max-w-full sm:gap-2">
+                    <span className="max-sm:sr-only sm:shrink-0 sm:whitespace-nowrap sm:text-sm">
+                      {t("sortBy")}
+                    </span>
                     <select
                       value={sortKey}
                       onChange={(e) => setSortKey(e.target.value as SortKey)}
-                      className="min-w-0 max-w-[12rem] flex-1 rounded-lg border border-black/[0.08] bg-white px-2 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand/20 sm:max-w-none sm:flex-none"
+                      className="max-sm:w-[6.25rem] w-[5.25rem] shrink-0 rounded-lg border border-black/[0.08] bg-white py-2 pl-1.5 pr-6 text-sm text-foreground outline-none focus:ring-2 focus:ring-brand/20 max-sm:py-1.5 max-sm:text-xs sm:w-auto sm:min-w-0 sm:max-w-[12rem] sm:flex-1 sm:px-2"
                     >
                       <option value="score-desc">{t("sortScoreDesc")}</option>
                       <option value="score-asc">{t("sortScoreAsc")}</option>
@@ -1348,44 +1306,46 @@ export function SearchExperience({
               </div>
             ) : null}
 
-            <ul className="mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pr-1">
-              {domainListCount === 0 && !isGenerating ? (
-                <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-muted">
-                  {t("listEmpty")}
-                </li>
-              ) : null}
-              {domainListCount > 0 && filteredSortedDomains.length === 0 ? (
-                <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center text-sm text-muted">
-                  {t("filterEmpty")}
-                </li>
-              ) : null}
-              {filteredSortedDomains.map((row) => (
-                <DomainCard
-                  key={row.domain}
-                  row={row}
-                  locale={locale}
-                  favorited={favoriteDomains.has(row.domain.toLowerCase())}
-                  onStar={() => {
-                    if (!isFavoriteDomain(row.domain)) {
-                      addFavorite({
-                        domain: row.domain,
-                        score: row.score,
-                        price: row.registration.price,
-                        currency: row.registration.currency,
-                        affiliateUrl: row.affiliateUrl,
-                        registrar: row.registrar,
-                      });
-                    }
-                    removeDomainFromAccumulated(row.domain);
-                    setFavoritesVersion((v) => v + 1);
-                  }}
-                  onRemoveFromList={() => removeDomainFromAccumulated(row.domain)}
-                />
-              ))}
-            </ul>
+            <div className="mt-3 flex min-h-0 min-w-0 flex-1 flex-col">
+              <ul className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overscroll-contain pr-1 [scrollbar-gutter:stable]">
+                {domainListCount === 0 && !isGenerating ? (
+                  <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-8 text-center text-sm text-muted">
+                    {t("listEmpty")}
+                  </li>
+                ) : null}
+                {domainListCount > 0 && filteredSortedDomains.length === 0 ? (
+                  <li className="rounded-xl border border-dashed border-[var(--border)] px-4 py-6 text-center text-sm text-muted">
+                    {t("filterEmpty")}
+                  </li>
+                ) : null}
+                {filteredSortedDomains.map((row) => (
+                  <DomainCard
+                    key={row.domain}
+                    row={row}
+                    locale={locale}
+                    favorited={favoriteDomains.has(row.domain.toLowerCase())}
+                    onStar={() => {
+                      if (!isFavoriteDomain(row.domain)) {
+                        addFavorite({
+                          domain: row.domain,
+                          score: row.score,
+                          price: row.registration.price,
+                          currency: row.registration.currency,
+                          affiliateUrl: row.affiliateUrl,
+                          registrar: row.registrar,
+                        });
+                      }
+                      removeDomainFromAccumulated(row.domain);
+                      setFavoritesVersion((v) => v + 1);
+                    }}
+                    onRemoveFromList={() => removeDomainFromAccumulated(row.domain)}
+                  />
+                ))}
+              </ul>
+            </div>
           </section>
         </div>
-        </>
+        </div>
       )}
     </div>
   );
@@ -1435,7 +1395,6 @@ function DomainCard({
       <div className="mt-2 flex flex-wrap items-stretch gap-2">
         <RegistrarButtonRow
           domain={row.domain}
-          preferredRegistrar={row.registrar}
           presentation="text"
           size="md"
           className="min-w-[14rem] flex-1 basis-[14rem]"

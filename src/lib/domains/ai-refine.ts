@@ -1,4 +1,4 @@
-import { generateText } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import { getChatModel, isLlmConfigured } from "@/lib/ai/provider";
 import { normalizeRegistrableSuffix } from "@/lib/domains/candidate-generator";
@@ -83,22 +83,20 @@ const MAX_REFINE_AI_CALLS = 3;
  */
 const MIN_AI_SCORE_TO_RETURN = 60;
 
-/** 从模型结果中尽量取出根对象（兼容 output 异常时从 text 解析） */
-function tryCoerceRootObjectFromResult(result: {
-  output: unknown;
-  text: string;
-}): unknown | null {
-  const o = result.output;
-  if (o !== null && typeof o === "object" && !Array.isArray(o)) return o;
-  const t = (result.text ?? "").trim();
-  if (!t) return null;
+/**
+ * 优先使用 `generateText` + `output.json()` 解析后的 `result.output`（OpenAI 兼容层会发
+ * `response_format: json_object`，与 DeepSeek 文档一致）；否则从纯文本中抠 JSON 对象。
+ */
+function tryParseObjectFromModelText(t: string): unknown | null {
+  const s = t.trim();
+  if (!s) return null;
   try {
-    const j = JSON.parse(t) as unknown;
+    const j = JSON.parse(s) as unknown;
     if (j !== null && typeof j === "object" && !Array.isArray(j)) return j;
   } catch {
     /* ignore */
   }
-  const m = t.match(/\{[\s\S]*\}/);
+  const m = s.match(/\{[\s\S]*\}/);
   if (m) {
     try {
       const j = JSON.parse(m[0]!) as unknown;
@@ -108,6 +106,12 @@ function tryCoerceRootObjectFromResult(result: {
     }
   }
   return null;
+}
+
+function getJsonPayloadFromLlmResult(result: { output?: unknown; text: string }): unknown | null {
+  const o = result.output;
+  if (o !== null && typeof o === "object" && !Array.isArray(o)) return o;
+  return tryParseObjectFromModelText(result.text ?? "");
 }
 
 /** 兼容 { data: { selected, invented } } 等一层包裹 */
@@ -403,9 +407,10 @@ export async function refineCandidatesWithAi(
         model: getChatModel(),
         prompt: fullPrompt,
         maxOutputTokens: 8192,
+        output: Output.json({ name: "refine" }),
       });
 
-      let rawJson = tryCoerceRootObjectFromResult(result);
+      let rawJson = getJsonPayloadFromLlmResult(result);
       rawJson = unwrapNestedRefinePayload(rawJson);
       const built = buildRefineFromPayload(rawJson, list, req, historySlds);
 
@@ -629,9 +634,10 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
         model: getChatModel(),
         prompt: fullPrompt,
         maxOutputTokens: 8192,
+        output: Output.json({ name: "domainPostScore" }),
       });
 
-      let rawJson = tryCoerceRootObjectFromResult(result);
+      let rawJson = getJsonPayloadFromLlmResult(result);
       rawJson = unwrapNestedRefinePayload(rawJson);
       const normalized = normalizePostScoreJsonPayload(rawJson);
       const parsed = postScoreSchema.safeParse(normalized);
@@ -709,14 +715,8 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
     }
   }
 
-  // 走到这里说明 AI 三次打分调用全部失败。
-  // 若因运行时「过多子请求 / subrequest 限制」等可识别为资源类错误，仍降级为未打分列表，避免白屏。
-  const isResourceError =
-    lastError.toLowerCase().includes("too many subrequest") ||
-    lastError.toLowerCase().includes("subrequest");
-  const fallbackReason = isResourceError
-    ? "subrequest limit reached — returning unscored available domains"
-    : "post-score AI failed after all attempts — returning unscored fallback";
+  // 走到这里说明 AI 三次打分调用全部失败。降级为未打分列表，避免白屏。
+  const fallbackReason = "post-score AI failed after all attempts — returning unscored fallback";
 
   logRefine({
     locale,
@@ -724,7 +724,7 @@ export async function scoreAndSelectRegisteredDomainsWithAi(
     prompt: basePrompt,
     inputCount: list.length,
     input: list,
-    error: fallbackReason,
+    error: lastError ? `${fallbackReason} | lastError: ${lastError}` : fallbackReason,
     durationMs: Date.now() - startTs,
   });
 
