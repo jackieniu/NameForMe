@@ -56,14 +56,6 @@ export function skipRegistrarButton(
   return false;
 }
 
-/** @deprecated 使用 skipRegistrarButton */
-export function skipAliyunRegisterButton(
-  domain: string,
-  registrar: RegistrarId,
-): boolean {
-  return skipRegistrarButton(domain, registrar);
-}
-
 export type RegistrarPresentation = "text" | "icon";
 
 /** 单个注册商入口：`text` = 彩色文字按钮（搜索列表）；`icon` = 无底色图标链（顶栏收藏）。 */

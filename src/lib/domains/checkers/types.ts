@@ -1,6 +1,4 @@
-import type { DomainMarket } from "@/types/domain";
-
-export type CheckSource = "aliyun" | "godaddy" | "cloudflare";
+export type CheckSource = "aliyun" | "cloudflare";
 
 export type DomainCheckDetail = {
   domain: string;
@@ -19,8 +17,4 @@ export type DomainCheckDetail = {
   cfExtensionUnsupportedViaApi?: boolean;
   /** 该 FQDN 在 CF 批次中无返回（HTTP/解析失败等），需依赖后续阿里云或其它来源 */
   cfBatchMiss?: boolean;
-};
-
-export type CheckerEnv = {
-  market: DomainMarket;
 };

@@ -12,8 +12,6 @@ import {
 } from "@/lib/rate-storage";
 import { isTurnstileEnforced, verifyTurnstileToken } from "@/lib/turnstile";
 
-export { getClientIp } from "@/lib/rate-limit";
-
 export function jsonGateErrorResponse(g: Extract<ApiGateResult, { ok: false }>): Response {
   if (g.kind === "blocked") {
     return Response.json({ code: "IP_BLOCKED" }, { status: 403 });

@@ -60,7 +60,7 @@ function maybeCleanup(now: Date): void {
   cleanup(now);
 }
 
-export class MemoryRateStorage implements RateStorage {
+class MemoryRateStorage implements RateStorage {
   async isBlocked(ip: string): Promise<boolean> {
     if (!ip || ip === "unknown") return false;
     const until = blocklist.get(ip);
@@ -105,12 +105,4 @@ let singleton: MemoryRateStorage | null = null;
 export function getMemoryStorage(): MemoryRateStorage {
   if (!singleton) singleton = new MemoryRateStorage();
   return singleton;
-}
-
-/** 仅供测试使用。 */
-export function _resetMemoryStorageForTests(): void {
-  counters.clear();
-  blocklist.clear();
-  opsSinceCleanup = 0;
-  singleton = null;
 }

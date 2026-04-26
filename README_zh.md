@@ -15,7 +15,7 @@ NameForMe 首页
 - **所见即可注册** — 每一个展示给你的域名，都已通过阿里云 / Cloudflare Registrar 实时可用性 API 预检。
 - **对话式理解品牌** — 多轮追问业务、市场、调性、禁忌词，AI 据此动态选择命名策略，而不是简单关键词拼接。
 - **中英双语原生** — 中文创业者找英文域名这件事，我们当一等公民来做。
-- **一键跳转注册商** — 同一卡片并排阿里云万网 / Cloudflare / GoDaddy，带 Affiliate 参数。
+- **一键跳转注册商** — 同一卡片并排阿里云万网与 GoDaddy，带推广 / Affiliate 参数。
 - **开源 & 免费** — MIT License，可自部署；喜欢的话直接用官网托管版。
 
 ---
@@ -30,7 +30,7 @@ NameForMe 首页
 
 品牌问卷
 
-**3. 边对话、边生成、边检测** — 左侧是对话与进度提示，右侧是**实时可注册**的候选域名，带 AI 评分、命名理由、首年/续费价格，以及三家注册商的一键注册。
+**3. 边对话、边生成、边检测** — 左侧是对话与进度提示，右侧是**实时可注册**的候选域名，带 AI 评分、命名理由、首年/续费价格，以及阿里云与 GoDaddy 的一键注册。
 
 对话与域名结果
 
@@ -39,17 +39,17 @@ NameForMe 首页
 ## 🧩 核心功能
 
 
-|                     |                                                              |
-| ------------------- | ------------------------------------------------------------ |
-| 🤖 **AI 对话澄清**      | 多轮追问，也可随时「开始生成」跳过                                            |
-| 🎯 **多策略生成**        | 内置十余种命名策略：词组合、熔合造词、隐喻、前后缀品牌化、拼音音节、跨语言借词等                     |
-| ✅ **实时可用性**         | 阿里云 / Cloudflare Registrar 实时 API，结果=可注册；`.ai` 等特殊 TLD 走 Porkbun 公共价目补全 |
-| 🏅 **AI 评分与理由**     | 0–100 综合评分 + 一句话命名理由，方便快速挑选                                  |
-| 💰 **价格透明**         | 首年价、续费价、溢价标注；按语言切换货币                                         |
-| 🔗 **Affiliate 跳转** | 阿里云 / GoDaddy / Cloudflare，带推广参数                          |
-| ⭐ **收藏与历史**         | `localStorage` 本地存储，无需账号                                     |
-| 🌐 **中英双语**         | `zh/` 与 `en/` 独立路由，SEO 友好                                    |
-| 🛡️ **防刷与熔断**       | IP 限流 + 可选 Turnstile + 可选 Upstash Redis 持久化                  |
+|                     |                                             |
+| ------------------- | ------------------------------------------- |
+| 🤖 **AI 对话澄清**      | 多轮追问，也可随时「开始生成」跳过                           |
+| 🎯 **多策略生成**        | 内置十余种命名策略：词组合、熔合造词、隐喻、前后缀品牌化、拼音音节、跨语言借词等    |
+| ✅ **实时可用性**         | 阿里云 / Cloudflare Registrar 实时 API，结果=可注册    |
+| 🏅 **AI 评分与理由**     | 0–100 综合评分 + 一句话命名理由，方便快速挑选                 |
+| 💰 **价格透明**         | 首年价、续费价、溢价标注；按语言切换货币                        |
+| 🔗 **Affiliate 跳转** | 阿里云万网与 GoDaddy，可配置推广参数                      |
+| ⭐ **收藏与历史**         | `localStorage` 本地存储，无需账号                    |
+| 🌐 **中英双语**         | `zh/` 与 `en/` 独立路由，SEO 友好                   |
+| 🛡️ **防刷与熔断**       | IP 限流 + 可选 Turnstile + 可选 Upstash Redis 持久化 |
 
 
 ---
@@ -120,11 +120,15 @@ LLM_MODEL=qwen2.5-14b-instruct
 
 ## ☁️ 部署
 
+本项目为 **Next.js 15**（App Router、API Route、生成接口使用 Node runtime），**适合部署在 Vercel** 及任意 **Node ≥ 20** 的环境。服务端通过 HTTPS 调用大模型与域名检测 API，无绑定 Cloudflare Workers 等边缘专有能力。
+
+**注意：** 域名生成接口会流式运行较长时间（可达数分钟）。代码中已为生成路由声明 `maxDuration = 300`，在 **Vercel Pro** 等支持较长函数时长的环境中更稳妥。**Vercel Hobby** 默认函数超时较短，长任务可能被中断；需要完整生成体验时请使用 Pro 档位，或改用 **Node 自托管**（`npm run build && npm run start`）。
+
 ### Vercel（一键部署）
 
 [Deploy with Vercel](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjackieniu%2FNameForMe)
 
-点击按钮后按向导连接 GitHub，即可在 Vercel 从本仓库创建项目并完成首次部署。**部署完成后**，在 Vercel → Project → **Settings → Environment Variables** 中按 `[.env.example](./.env.example)` 填写 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 及域名检测等变量，然后重新部署一次使配置生效。
+点击按钮后按向导连接 GitHub，即可在 Vercel 从本仓库创建项目并完成首次部署。**部署完成后**，在 Vercel → Project → **Settings → Environment Variables** 中按 `[.env.example](./.env.example)` 填写 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL`、域名检测凭证、可选的 `NEXT_PUBLIC_SITE_URL`、Turnstile、Upstash 等，然后重新部署一次使配置生效。
 
 ### Node 自托管
 

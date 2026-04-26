@@ -10,6 +10,8 @@ import { randomUUID } from "crypto";
  */
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+/** Vercel 等平台：Pro 可拉满长时流式生成；Hobby 仍受套餐默认上限约束 */
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);

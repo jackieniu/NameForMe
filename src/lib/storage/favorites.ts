@@ -56,28 +56,6 @@ export function isFavoriteDomain(domain: string): boolean {
   return readRaw().some((x) => x.domain.toLowerCase() === d);
 }
 
-export function removeFavoriteByDomain(domain: string): void {
-  const d = domain.toLowerCase();
-  writeRaw(readRaw().filter((x) => x.domain.toLowerCase() !== d));
-}
-
-/** 切换收藏；返回切换后是否已收藏 */
-export function toggleFavorite(rec: {
-  domain: string;
-  score: number;
-  price: number;
-  currency: string;
-  affiliateUrl?: string;
-  registrar?: RegistrarId;
-}): boolean {
-  if (isFavoriteDomain(rec.domain)) {
-    removeFavoriteByDomain(rec.domain);
-    return false;
-  }
-  addFavorite(rec);
-  return true;
-}
-
 export function removeFavorite(id: string) {
   writeRaw(readRaw().filter((x) => x.id !== id));
 }

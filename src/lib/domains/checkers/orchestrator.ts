@@ -67,7 +67,7 @@ export async function checkDomainsRealtime(
   opts?: {
     onCheckProgress?: (p: CheckDomainsProgress) => void | Promise<void>;
     signal?: AbortSignal;
-    /** 当前语言："zh" → Phase 2 补阿里云 CNY 价格，其他 → 仅保留 GoDaddy USD 价格 */
+    /** 当前语言："zh" → Phase 2 补阿里云 CNY 价格；非中文 → 不跑补价，保留 CF/阿里云已给出的标价 */
     locale?: string;
     /** 与 `ai-interactions.jsonl` 中 `type: domain_check_route` / `generate_stream` 关联 */
     checkLogContext?: { sessionId?: string };

@@ -1,4 +1,4 @@
-export const STORAGE_NS = "nameforme:v1";
+const STORAGE_NS = "nameforme:v1";
 
 export const FAVORITES_KEY = `${STORAGE_NS}:favorites`;
 

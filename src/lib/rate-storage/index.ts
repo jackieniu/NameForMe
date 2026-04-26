@@ -4,7 +4,6 @@ import type { RateStorage } from "./types";
 
 export type { RateCounts, RateReadSnapshot, RateStorage } from "./types";
 export { secondsToNextDay, secondsToNextHour } from "./types";
-export { hasUpstashRateLimitBindings } from "./upstash";
 
 /**
  * 是否配置了 Upstash Redis（`UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN`）。

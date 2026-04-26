@@ -29,7 +29,6 @@ function aliyunWanwangSearchUrl(fqdn: string): string {
  */
 export function affiliateRegistrarFromCheckSource(source: CheckSource): RegistrarId {
   if (source === "cloudflare") return "godaddy";
-  if (source === "godaddy") return "godaddy";
   return "aliyun";
 }
 

@@ -1,9 +1,28 @@
 import crypto from "node:crypto";
 import { logAliyunCheckDomainFailure } from "@/lib/ai-logger";
 import type { DomainCheckDetail } from "@/lib/domains/checkers/types";
-import { acquireCheckDomainSlot } from "@/lib/domains/checkers/rate-limit";
+import {
+  acquireCheckDomainSlot,
+  reportCheckDomainThrottle,
+} from "@/lib/domains/checkers/rate-limit";
 
 const CHECKDOMAIN_LOG_BODY_MAX = 8000;
+
+function shouldReportAliyunThrottle(
+  httpStatus: number,
+  json: Record<string, unknown> | null,
+): boolean {
+  if (httpStatus === 429 || httpStatus === 503) return true;
+  if (!json) return false;
+  const code = String(json.Code ?? "").toLowerCase();
+  const msg = String(json.Message ?? "").toLowerCase();
+  return (
+    code.includes("throttl") ||
+    msg.includes("throttl") ||
+    msg.includes("requestlimit") ||
+    msg.includes("flow control")
+  );
+}
 
 /** 写入 ai-interactions.jsonl 的请求摘要（不含密钥与签名） */
 function redactedParamsForLog(params: Record<string, string>): Record<string, string> {
@@ -130,6 +149,7 @@ async function fetchCheckDomainBody(
   const preview = rawBody.slice(0, CHECKDOMAIN_LOG_BODY_MAX);
 
   if (!res.ok) {
+    if (shouldReportAliyunThrottle(res.status, json)) reportCheckDomainThrottle();
     logAliyunCheckDomainFailure({
       domain: d,
       httpStatus: res.status,
@@ -152,6 +172,7 @@ async function fetchCheckDomainBody(
     throw new Error("Aliyun CheckDomain: empty or non-json response body");
   }
   if (json.Code && !json.CheckDomainResponse) {
+    if (shouldReportAliyunThrottle(res.status, json)) reportCheckDomainThrottle();
     logAliyunCheckDomainFailure({
       domain: d,
       httpStatus: res.status,
@@ -184,7 +205,7 @@ export interface AliyunCheckOptions {
  *   2. renew（续费价）— 仅当域名可注册且第 1 次未返回续费价时补充
  *
  * 若 create 请求异常（网络错误 / 阿里云不支持该 TLD），则直接抛出，
- * 由 orchestrator 决定是否转 Porkbun 补价格。
+ * 由 orchestrator 决定是否改用其它检测源。
  */
 export async function aliyunCheckDomain(
   domain: string,
