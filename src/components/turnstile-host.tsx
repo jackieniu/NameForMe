@@ -11,16 +11,20 @@ import {
 
 const SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY?.trim() ?? "";
 
+type TurnstileRenderOpts = {
+  sitekey: string;
+  /** @see https://developers.cloudflare.com/turnstile/get-started/client-side-rendering/widget-configurations/ */
+  size?: "normal" | "flexible" | "compact";
+  /** 须与下方 `turnstile.execute(id)` 配合；若用默认 `render` 会在 load 时自动跑挑战，再 execute 会报 already executing */
+  execution?: "execute";
+  /** 挑战开始前不占视觉空间；尺寸仍须为 normal/flexible/compact 之一 */
+  appearance?: "execute" | "interaction-only" | "always";
+  callback: (token: string) => void;
+  "error-callback"?: () => void;
+};
+
 type TurnstileGlobal = {
-  render: (
-    el: HTMLElement,
-    opts: {
-      sitekey: string;
-      size: "invisible";
-      callback: (token: string) => void;
-      "error-callback"?: () => void;
-    },
-  ) => string;
+  render: (el: HTMLElement, opts: TurnstileRenderOpts) => string;
   reset: (widgetId?: string) => void;
   execute: (widgetId?: string) => void;
 };
@@ -42,7 +46,7 @@ type Pending = {
 
 /**
  * 无站点 key 时 `getToken` 恒返回空串，后端不强制 Turnstile。
- * 有站点 key 时用 invisible 控件，每次 `getToken` 执行一次校验。
+ * 有站点 key 时用 explicit + execution:"execute"，仅在 `getToken` 时 `reset` + `execute`（Turnstile 已废弃 size:"invisible"）。
  */
 export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileHost(
   _props,
@@ -62,13 +66,18 @@ export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileH
     }
   };
 
+  const flushQueue = () => {
+    if (currentRef.current) return;
+    const next = queueRef.current.shift();
+    if (next) runPending(next);
+  };
+
   const settle = (fn: (p: Pending) => void) => {
     const p = currentRef.current;
     currentRef.current = null;
     clearTimer();
     if (p) fn(p);
-    const next = queueRef.current.shift();
-    if (next) runPending(next);
+    flushQueue();
   };
 
   const runPending = (p: Pending) => {
@@ -76,8 +85,7 @@ export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileH
     const api = window.turnstile;
     if (!id || !api) {
       p.reject(new Error("turnstile_not_ready"));
-      const next = queueRef.current.shift();
-      if (next) runPending(next);
+      flushQueue();
       return;
     }
     currentRef.current = p;
@@ -86,7 +94,14 @@ export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileH
     }, 12_000);
     try {
       api.reset(id);
-      api.execute(id);
+      // reset 与 execute 紧挨可能在部分浏览器触发竞态；微任务延后一次 execute
+      queueMicrotask(() => {
+        try {
+          api.execute(id);
+        } catch (e) {
+          settle((cur) => cur.reject(e instanceof Error ? e : new Error("turnstile_execute")));
+        }
+      });
     } catch (e) {
       settle((cur) => cur.reject(e instanceof Error ? e : new Error("turnstile_execute")));
     }
@@ -99,7 +114,9 @@ export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileH
     if (!el || !api || widgetIdRef.current) return;
     widgetIdRef.current = api.render(el, {
       sitekey: SITE_KEY,
-      size: "invisible",
+      size: "normal",
+      execution: "execute",
+      appearance: "execute",
       callback: (token: string) => settle((p) => p.resolve(token)),
       "error-callback": () => settle((p) => p.reject(new Error("turnstile_error"))),
     });
@@ -118,11 +135,8 @@ export const TurnstileHost = forwardRef<TurnstileHostHandle>(function TurnstileH
         const waitReady = (attempt: number) => {
           if (widgetIdRef.current && window.turnstile) {
             const p: Pending = { resolve, reject };
-            if (currentRef.current) {
-              queueRef.current.push(p);
-            } else {
-              runPending(p);
-            }
+            queueRef.current.push(p);
+            flushQueue();
             return;
           }
           if (attempt > 200) {
