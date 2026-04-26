@@ -4,7 +4,7 @@
 
 [官网](https://nameforme.com) · [GitHub](https://github.com/jackieniu/NameForMe) · [English](./README.md)
 
-NameForMe 首页
+![NameForMe 首页](./public/homepage.png)
 
 ---
 
@@ -24,15 +24,15 @@ NameForMe 首页
 
 **1. 从场景开始** — 无需起步门槛，选一个贴近你的场景即可进入。
 
-场景入口
+![场景入口](./public/homepage.png)
 
 **2. 理解你的品牌** — 一份轻量问卷收集目标市场、调性、偏好后缀和预算，AI 据此决策命名方向。
 
-品牌问卷
+![品牌问卷](./public/Surveypage.png)
 
 **3. 边对话、边生成、边检测** — 左侧是对话与进度提示，右侧是**实时可注册**的候选域名，带 AI 评分、命名理由、首年/续费价格，以及阿里云与 GoDaddy 的一键注册。
 
-对话与域名结果
+![对话与域名结果](./public/chatpage.png)
 
 ---
 

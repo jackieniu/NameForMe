@@ -6,9 +6,7 @@
 
 [Website](https://nameforme.com) · [GitHub](https://github.com/jackieniu/NameForMe) · [中文](./README_zh.md)
 
-
-
-NameForMe homepage
+![NameForMe homepage](./public/homepage.png)
 
 ---
 
@@ -28,15 +26,15 @@ Most AI domain generators share one frustrating pattern: **great-sounding names 
 
 **1. Start from a scenario** — pick a path that matches what you are building; no heavy setup.
 
-Scenario entry
+![Scenario entry](./public/homepage.png)
 
 **2. Tell us about your brand** — a short questionnaire captures market, tone, preferred TLDs, and budget so generation stays on brief.
 
-Brand questionnaire
+![Brand questionnaire](./public/Surveypage.png)
 
 **3. Chat, generate, and verify together** — conversation and progress on the left; **actually available** candidates on the right with AI scores, rationale, first-year and renewal pricing, and two registrar buttons (Alibaba Cloud & GoDaddy).
 
-Chat and domain results
+![Chat and domain results](./public/chatpage.png)
 
 ---
 
